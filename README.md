@@ -4,4 +4,7 @@ https://doi.org/10.1016/j.pss.2023.105687
 
 For questions or suggestions, do not hesitate to contact thomas.heyer[at]uni-muenster.de.
 
-
+## Instalation
+* Download the latest version
+* Extract and copy the entire folder to the QGIS plugin directory (...\Qgis\apps\qgis\python\plugins)
+* Activate the plugin (QGIS -> Plugins -> Manage and Install Plugins -> activate)
