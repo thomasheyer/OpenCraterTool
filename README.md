@@ -1,5 +1,5 @@
 # OpenCraterTool
-A tool to measure and compare craters
+The OpenCraterTool is an open source extension for QGIS to measure and compare craters. The tool enables a map projection-independent measurement of crater sizes as basis for accurate dating of planetary surfaces.
 
 Scientific publications using the OpenCraterTool are welcome to cite the following article as a reference:
 https://doi.org/10.1016/j.pss.2023.105687
