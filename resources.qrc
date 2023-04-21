@@ -1,0 +1,16 @@
+<RCC>
+    <qresource prefix="/plugins/opencratertool" >
+		<file>ui/icon0.png</file>
+		<file>ui/icon1.png</file>
+		<file>ui/icon2.png</file>
+		<file>ui/icon3.png</file>
+		<file>ui/icon4.png</file>
+		<file>ui/icon5.png</file>
+		<file>ui/icon6.png</file>
+		<file>ui/icon7.png</file>
+		<file>ui/icon8.png</file>
+		<file>ui/iconA.png</file>
+		<file>ui/iconB.png</file>
+		<file>ui/iconC.png</file>
+    </qresource>
+</RCC>

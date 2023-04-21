@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ctDialogBase</class>
+ <widget class="QDialog" name="ctDialogBase">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>529</width>
+    <height>322</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>OpenCraterTool</string>
+  </property>
+  <widget class="QTabWidget" name="tabWidget">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>10</y>
+     <width>501</width>
+     <height>291</height>
+    </rect>
+   </property>
+   <property name="currentIndex">
+    <number>0</number>
+   </property>
+   <widget class="QWidget" name="tab">
+    <attribute name="title">
+     <string>Intro</string>
+    </attribute>
+    <widget class="QLabel" name="label">
+     <property name="geometry">
+      <rect>
+       <x>25</x>
+       <y>25</y>
+       <width>440</width>
+       <height>200</height>
+      </rect>
+     </property>
+     <property name="font">
+      <font>
+       <pointsize>9</pointsize>
+      </font>
+     </property>
+     <property name="text">
+      <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;The OpenCraterTool is an open source tool for a map-projection independent measurement and comparison of craters. Results can be visualized within the tool or exported for further external analysis. A more detailed description of the tool is presented in &lt;a href=&quot;https://doi.org/10.1016/j.pss.2023.105687&quot;&gt;&lt;span style=&quot; text-decoration: underline; color:#0000ff;&quot;&gt;Heyer et al. (2023)&lt;/span&gt;&lt;/a&gt;.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+     </property>
+     <property name="scaledContents">
+      <bool>false</bool>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignJustify|Qt::AlignTop</set>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+     <property name="margin">
+      <number>0</number>
+     </property>
+     <property name="openExternalLinks">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </widget>
+   <widget class="QWidget" name="tab_2">
+    <attribute name="title">
+     <string>Crater Counting</string>
+    </attribute>
+    <widget class="QLabel" name="label_3">
+     <property name="geometry">
+      <rect>
+       <x>25</x>
+       <y>25</y>
+       <width>440</width>
+       <height>181</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Use the 'Create Shapefile' function to create two vector layers required for the crater measurement process. The area layer stores the count area as an object including the unit name and area (in km²). The crater layer stores the crater objects with the geographical coordinates of the crater center, the crater diameter (in km) and type (standard or marked). The measurement layers rely on the user-defined spatial reference of the QGIS project.
+The OpenCraterTool provides two methods to determine the position and diameter of craters on the basis of map-projected images. The Two-Point-method and the Three-Point-method create a circle object in the crater layer based on user-defined points at the crater rim.
+
+Tip: Right click deletes the last drawn crater.</string>
+     </property>
+     <property name="scaledContents">
+      <bool>true</bool>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignJustify|Qt::AlignTop</set>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+     <property name="margin">
+      <number>0</number>
+     </property>
+    </widget>
+   </widget>
+   <widget class="QWidget" name="tab_3">
+    <attribute name="title">
+     <string>Plot Statistics</string>
+    </attribute>
+    <widget class="QLabel" name="label_4">
+     <property name="geometry">
+      <rect>
+       <x>25</x>
+       <y>25</y>
+       <width>440</width>
+       <height>181</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>The 'Plot Statistics' function provides a quick preview of the CSFD measurement. In default mode, diameters of all craters that intersect with the user-selected areas are shown in a logarithmic, cumulative plot. The second mode presents all craters whose centers are located within the user-selected areas. Crater diameters are binned using the pseudo-log bins described in Neukum (1983) and Hartmann and Neukum (2001) while the error bars indicate the 1/sqrt(n) (Arvidson et al., 1979).</string>
+     </property>
+     <property name="scaledContents">
+      <bool>false</bool>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignJustify|Qt::AlignTop</set>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+     <property name="margin">
+      <number>0</number>
+     </property>
+    </widget>
+   </widget>
+   <widget class="QWidget" name="tab_4">
+    <attribute name="title">
+     <string>Export Statistics</string>
+    </attribute>
+    <widget class="QLabel" name="label_5">
+     <property name="geometry">
+      <rect>
+       <x>25</x>
+       <y>25</y>
+       <width>440</width>
+       <height>181</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Use this function to export crater measurements for further external analyses. During export, the user-selected area objects are re-projected into a Lambert azimuthal equal-area map projection using the centroid of the respective area as projection center. The respective areas are stored as attributes in the area layer. Then both the total area and the individual areas are listed in the exported files.</string>
+     </property>
+     <property name="scaledContents">
+      <bool>false</bool>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignJustify|Qt::AlignTop</set>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+     <property name="margin">
+      <number>0</number>
+     </property>
+    </widget>
+   </widget>
+   <widget class="QWidget" name="tab_5">
+    <attribute name="title">
+     <string>Compare Counts</string>
+    </attribute>
+    <widget class="QLabel" name="label_6">
+     <property name="geometry">
+      <rect>
+       <x>25</x>
+       <y>25</y>
+       <width>440</width>
+       <height>181</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>This function allows a quantified comparison of two crater measurements. The resulting statistics are presented in an interactive plot. In this plot, the x-axis describes the reference diameters and the y-axis shows the ratio of the compared and reference crater diameters. Alternatively, the absolute or relative differences can also be displayed. By selecting a gray datapoint in the interactive plot, the compared craters will be shown and highlighted in the QGIS data frame. The black boxes represent the binned statistics and can also be selected for map display. In addition to the interactive plot within the tool, users are able to export the matched craters for external analyses as a text file.</string>
+     </property>
+     <property name="scaledContents">
+      <bool>false</bool>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignJustify|Qt::AlignTop</set>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+     <property name="margin">
+      <number>0</number>
+     </property>
+    </widget>
+   </widget>
+  </widget>
+  <widget class="QLabel" name="info_version">
+   <property name="geometry">
+    <rect>
+     <x>350</x>
+     <y>300</y>
+     <width>161</width>
+     <height>21</height>
+    </rect>
+   </property>
+   <property name="layoutDirection">
+    <enum>Qt::RightToLeft</enum>
+   </property>
+   <property name="text">
+    <string>...</string>
+   </property>
+   <property name="alignment">
+    <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_2">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>300</y>
+     <width>231</width>
+     <height>16</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Contact: Thomas.Heyer@uni-muenster.de</string>
+   </property>
+   <property name="openExternalLinks">
+    <bool>true</bool>
+   </property>
+  </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
