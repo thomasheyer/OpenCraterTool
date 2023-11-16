@@ -141,7 +141,7 @@ class opencratertool:
     def initGui(self):
 
         # Set version of the tool
-        self.version='Version: 0.1 (2023-04-19)'
+        self.version='Version: 0.2 (2023-11-16)'
 
         # Create icon for two point tool
         icon_path = ':/plugins/opencratertool/ui/iconA.png'
@@ -620,8 +620,7 @@ class opencratertool:
                 self.move.emit()
 
         def canvasReleaseEvent(self, e):
-
-            if(self.iface.activeLayer().name().split('_')[0]=='CRATER'):
+            if(self.iface.activeLayer().name().upper().startswith('CRATER') or self.iface.activeLayer().name().upper().endswith('CRATER')):
                 if e.button() == Qt.LeftButton:
                     if self.firstClick==False:
                         self.firstClick=True
@@ -803,7 +802,7 @@ class opencratertool:
 
         def canvasReleaseEvent(self, e):
             
-            if(self.iface.activeLayer().name().split('_')[0]=='CRATER'):
+            if(self.iface.activeLayer().name().upper().startswith('CRATER') or self.iface.activeLayer().name().upper().endswith('CRATER')):
                 if e.button() == Qt.LeftButton:
                     if self.firstClick == False:
                        self.firstClick=True
@@ -1134,9 +1133,9 @@ class opencratertool:
       
         else:
             crs=QgsProject.instance().crs()
-            pathtile=os.path.split(fn)
-            craterfile=pathtile[0]+'/CRATER_'+pathtile[1]
-            areafile=pathtile[0]+'/AREA_'+pathtile[1]
+            #pathtile=os.path.split(fn)
+            craterfile=fn.split('.')[0]+'_CRATER.shp'
+            areafile=fn.split('.')[0]+'_AREA.shp'
 
             if self.con1.check_create_crater.isChecked():
                 layerFields = QgsFields()
@@ -1169,8 +1168,8 @@ class opencratertool:
     # Function to list the available crater and area files in all user interfaces
     def listlayers(self):
         layers = QgsProject.instance().layerTreeRoot().children()
-        self.area_layer_list=[layer.name() for layer in layers if layer.name().split('_')[0]=='AREA']
-        self.crat_layer_list=[layer.name() for layer in layers if layer.name().split('_')[0]=='CRATER']
+        self.area_layer_list=[layer.name() for layer in layers if layer.name().upper().startswith('AREA') or layer.name().upper().endswith('AREA')]
+        self.crat_layer_list=[layer.name() for layer in layers if layer.name().upper().startswith('CRATER') or layer.name().upper().endswith('CRATER')]
 
         self.con2.combo_area.clear() 
         self.con2.combo_crat.clear()      
@@ -1479,7 +1478,7 @@ class opencratertool:
     # Function to export the crater comparison statistics
     def exportcompare(self):
         
-        self.exportfile, _fil = QFileDialog.getSaveFileName(self.con2, "Select Output File ","", 'text (*.txt);;All files (*.*)')
+        self.exportfile, _fil = QFileDialog.getSaveFileName(self.con2, "Select Output File ",QgsProject.instance().readPath("./")+"/comparison", 'text (*.txt);;All files (*.*)')
         if self.exportfile != '':
             
             self.comparestats()
@@ -1853,7 +1852,7 @@ class opencratertool:
             # Calculates the total number of grid cells
             quadnumber=hm*wm
             if quadnumber <5000:
-                self.exportfile, _fil = QFileDialog.getSaveFileName(self.con2, "Select Output File ","", 'Shapefiles(*.shp);;All files (*.*)')
+                self.exportfile, _fil = QFileDialog.getSaveFileName(self.con2, "Select Output File ",QgsProject.instance().readPath("./")+"/grid", 'Shapefiles(*.shp);;All files (*.*)')
                 if self.exportfile != '':
             
                     layer_crat = QgsProject.instance().mapLayersByName(self.crat_layer_list[self.crat_layer_index])[0]
@@ -1948,7 +1947,7 @@ class opencratertool:
     # Functions to execute the main functionality of the respective user interfaces --------------------------------------------------------------------
     
     def opt1_run(self):
-        self.createfile, _fil = QFileDialog.getSaveFileName(self.con2, "Select   output file ","", 'Shapefile(*.shp);;All files (*.*)')
+        self.createfile, _fil = QFileDialog.getSaveFileName(self.con2, "Select   output file ",QgsProject.instance().readPath("./")+"/example", 'Shapefile(*.shp);;All files (*.*)')
         if self.createfile != '':
             self.createshapefiles()
 
@@ -1956,12 +1955,23 @@ class opencratertool:
         if len(self.area_list_selection)==0:
             self.iface.messageBar().pushMessage("Select area name", duration=2)
         else: 
+            area_layer = QgsProject.instance().mapLayersByName(self.area_layer_list[self.area_layer_index])[0]       
+            all_areas=[str(area.attribute('area_name')) for area in area_layer.getFeatures()]
+            sel_areas=[all_areas[index] for index in sorted(self.area_list_selection) if 0 <= index < len(all_areas)]
+
+            #defaultname equals the shapefile name
+            defaultfilename= QgsProject.instance().readPath("./")+'/'+self.area_layer_list[self.area_layer_index].lower().replace("_area", "").replace("area_", "")
+            
+            if len(sel_areas)!=len(all_areas):
+                #add the selected areas to the defaultname
+                defaultfilename=defaultfilename+'_'+ '_'.join(sel_areas).replace(" ", "_")
+                
             if self.exportformatindex==0:
-                self.exportfile, _fil = QFileDialog.getSaveFileName(self.con2, "Select Output File ","", 'Spatial crater count files(*.scc);;All files (*.*)')
+                self.exportfile, _fil = QFileDialog.getSaveFileName(self.con2, "Select Output File ",defaultfilename, 'Spatial crater count files(*.scc);;All files (*.*)')
             elif self.exportformatindex==1:
-                self.exportfile, _fil = QFileDialog.getSaveFileName(self.con2, "Select Output File ","", 'Diameter files (*.diam);;All files (*.*)')
+                self.exportfile, _fil = QFileDialog.getSaveFileName(self.con2, "Select Output File ",defaultfilename, 'Diameter files (*.diam);;All files (*.*)')
             else:
-                self.exportfile, _fil = QFileDialog.getSaveFileName(self.con2, "Select Output File ","", 'Shapefile (*.shp);;All files (*.*)')
+                self.exportfile, _fil = QFileDialog.getSaveFileName(self.con2, "Select Output File ",defaultfilename, 'Shapefile (*.shp);;All files (*.*)')
             if self.exportfile != '':
                 self.iface.mainWindow().findChild(QAction, 'mActionDeselectAll').trigger()
                 self.con2.hide()
@@ -2058,8 +2068,7 @@ class opencratertool:
     # Function to activate the two-point crater drawing
     def main2(self):
         try:
-            
-            if(self.iface.activeLayer().name().split('_')[0]=='CRATER'):
+            if(self.iface.activeLayer().name().upper().startswith('CRATER') or self.iface.activeLayer().name().upper().endswith('CRATER')):
                 if self.actions[0].isChecked():
                     self.actions[1].setChecked(False)
                     self.canvas.setMapTool(self.draw2PointCrater)
@@ -2077,7 +2086,7 @@ class opencratertool:
     # Function to activate the three-point crater drawing
     def main3(self):
         try:
-            if(self.iface.activeLayer().name().split('_')[0]=='CRATER'):
+            if(self.iface.activeLayer().name().upper().startswith('CRATER') or self.iface.activeLayer().name().upper().endswith('CRATER')):
                 if self.actions[1].isChecked():
                     self.actions[0].setChecked(False)
                     self.canvas.unsetMapTool(self.draw2PointCrater)
