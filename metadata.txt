@@ -2,34 +2,36 @@
 name=OpenCraterTool
 qgisMinimumVersion=3.24
 description=A tool to measure and compare craters
-version=0.3
+version=0.3 
 author=Thomas Heyer
 email=thomas.heyer@uni-muenster.de
 
 about=The OpenCraterTool enables a map projection-independent measurement of crater sizes as basis for accurate dating of planetary surfaces.
 
-tracker=https://www.uni-muenster.de/Planetology/ifp/home.html
-repository=https://www.uni-muenster.de/Planetology/ifp/home.html
+tracker=https://github.com/thomasheyer/OpenCraterTool/issues
+repository=https://github.com/thomasheyer/OpenCraterTool
 # End of mandatory metadata
 
 # Recommended items:
+changelog=0.1	Public version
+
 
 hasProcessingProvider=no
 # Uncomment the following line and add your changelog:
-# changelog=
+# changelog= 	
 #		0.2 (2023-11-16)
 #		* The labelling of the measurement shapefiles has been modified.
 #		* The export of statistics now provides default filenames.
 #		0.3 (2025-09-12)
 #		* Updated .scc file format for more consistent handling of sub area names and values.
-#
+
 
 # Tags are comma separated with spaces allowed
-tags=python
+tags=circle, digitizing, crater, vector, python
 
-homepage=https://www.uni-muenster.de/Planetology/ifp/home.html
+homepage=https://github.com/thomasheyer/OpenCraterTool
 category=Plugins
-icon=icon4.png
+icon=ui/icon0.png
 # experimental flag
 experimental=False
 
@@ -46,4 +48,3 @@ Category of the plugin: Raster, Vector, Database or Web
 
 # If the plugin can run on QGIS Server.
 server=False
-
