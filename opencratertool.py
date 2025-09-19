@@ -5,8 +5,8 @@
                                  A QGIS plugin
  A tool for crater size-frequency measurements
                               -------------------
-        begin                : 2023-04-19
-        copyright            : (C) 2023 by Thomas Heyer
+        begin                : 2025-09-12
+        copyright            : (C) 2025 by Thomas Heyer
         email                : thomas.heyer@uni-muenster.de
  ***************************************************************************/
 
@@ -36,6 +36,7 @@ from qgis.core import QgsFeature, QgsGeometry, QgsWkbTypes, QgsVectorLayer, QgsF
 import datetime,time
 import numpy as np
 from pyproj import CRS
+from collections import defaultdict
 
 from . import pyqtgraph as pg
 #from .pyqtgraph import exporters
@@ -54,6 +55,71 @@ def g_mean(x):
     a = np.log(x)
     return np.exp(a.mean())
 
+def read_scc(struct_names=None, filepath=None):
+    if isinstance(struct_names, str):
+        struct_names = [struct_names]
+
+    results = {}
+    headers = []
+    current_key = None
+
+    def cast(value, header=None):
+        """Try to cast numbers, otherwise return string."""
+        if header and header.lower() == "name":
+            return value
+        try:
+            if "." in value or "e" in value.lower():
+                return float(value)
+            return int(value)
+        except ValueError:
+            return value
+
+    with open(filepath, "r") as f:
+        for raw in f:
+            line = raw.strip()
+
+            if not line or line.startswith("#"):
+                continue
+
+            # Start of a table block
+            if "=" in line and "{" in line:
+                block_name, rest = line.split("=", 1)
+                block_name = block_name.strip()
+                headers_part = rest.strip().lstrip("{").strip()
+                headers = [h.strip() for h in headers_part.split(",") if h.strip()]
+                current_key = block_name
+                if struct_names is None or block_name in struct_names:
+                    results[block_name] = []
+                continue
+
+            # End of table block
+            if "}" in line:
+                current_key = None
+                headers = []
+                continue
+
+            # Single-line assignment (no { ... })
+            if "=" in line and "{" not in line:
+                block_name, value = line.split("=", 1)
+                block_name = block_name.strip()
+                value_text = value.strip()
+                if struct_names is None or block_name in struct_names:
+                    results[block_name] = value_text  # <-- raw text
+                continue
+
+            # Inside a table block
+            if current_key in results:
+                parts = line.split()
+                n = min(len(headers), len(parts))
+                entry = {headers[i]: cast(parts[i], headers[i]) for i in range(n)}
+                results[current_key].append(entry)
+
+    if not results:
+        raise KeyError(
+            f"No matching blocks found. Requested={struct_names}, File={filepath!r}"
+        )
+
+    return results
 
 
 class opencratertool:
@@ -141,7 +207,7 @@ class opencratertool:
     def initGui(self):
 
         # Set version of the tool
-        self.version='Version: 0.2 (2023-11-16)'
+        self.version='Version: 0.3 (2025-09-12)'
 
         # Create icon for two point tool
         icon_path = ':/plugins/opencratertool/ui/iconA.png'
@@ -382,6 +448,8 @@ class opencratertool:
             self.setLabel('bottom', 'Crater Diameter [km]')
             self.setLogMode(True, True)
             self.resize(440, 330)
+            self.plotItem.setAspectLocked(True, ratio=1)
+            
         def clickitem(self,e,p):
             try:
                 self.removeItem(self.selectionplot)
@@ -866,9 +934,9 @@ class opencratertool:
         layer_area.startEditing()
         
         self.expo_layer_crsinfo = layer_crat.crs().description()
-        self.expo_area_info='unit_boundary = {vertex, sub_area, tag, lon, lat'
+        self.expo_area_info=''
         self.expo_area_info_diam=''
- 
+        self.expo_area_meta=''
         self.expo_area_all = 0
         self.expo_perimeter_all = 0
         area_vector_counter =0
@@ -887,7 +955,7 @@ class opencratertool:
                 area_vectors=''
                 for i in range(len(shapepoints)):
                     area_vector_counter=area_vector_counter+1
-                    area_vectors=area_vectors+'\n'+str(area_vector_counter)+'\t'+str(feat.id()+1)+'\text\t'+'{:.14f}'.format(shapepoints[i].x())+'\t'+'{:.14f}'.format(shapepoints[i].y())
+                    area_vectors=area_vectors+str(area_vector_counter)+'\t'+str(feat.id()+1)+'\text\t'+'{:.14f}'.format(shapepoints[i].x())+'\t'+'{:.14f}'.format(shapepoints[i].y())+'\n'
                 
                 crs_laea = QgsCoordinateReferenceSystem.fromProj4('+proj=laea +lat_ts=0 +lat_0='+str(round(center_lonlat.y()))+' +lon_0='+str(round(center_lonlat.x()))+' '+geod+' +units=m +no_defs +type=crs')
                 
@@ -901,7 +969,10 @@ class opencratertool:
                 feat.setAttribute("area",area_km2)
                 layer_area.updateFeature(feat)
 
-                self.expo_area_info=self.expo_area_info+'\n#\n# Area_name '+str(feat.id()+1)+' = '+str(feat.attribute('area_name'))+'\n' + '# Area_size ' +str(feat.id()+1)+' = {:.13f}'.format(area_km2)+' <km^2>\n'+ '# Area_perimeter ' +str(feat.id()+1)+' = {:.13f}'.format(perimeter_km)+' <km>\n#'+area_vectors
+                self.expo_area_info=self.expo_area_info+area_vectors #'\n#\n# Area_name '+str(feat.id()+1)+' = '+str(feat.attribute('area_name'))+'\n' + '# Area_size ' +str(feat.id()+1)+' = {:.13f}'.format(area_km2)+' <km^2>\n'+ '# Area_perimeter ' +str(feat.id()+1)+' = {:.13f}'.format(perimeter_km)+' <km>\n#'
+                
+                self.expo_area_meta=self.expo_area_meta+str(feat.attribute('area_name'))+'\t'+'{:.13f}'.format(area_km2)+'\t'+'{:.13f}'.format(perimeter_km)+'\n'
+                
                 self.expo_area_info_diam=self.expo_area_info_diam+'\n# '+str(feat.attribute('area_name'))+' = {:.13f}'.format(area_km2)+' <km^2>\n#' 
                 self.expo_area_all = self.expo_area_all + area_km2
                 self.expo_perimeter_all = self.expo_perimeter_all + perimeter_km
@@ -951,7 +1022,7 @@ class opencratertool:
  
         layer = QgsProject.instance().mapLayersByName(self.crat_layer_list[self.crat_layer_index])[0]
         crs=CRS.from_proj4(layer.crs().toProj4())
-        ellipsoid_info='\na-axis radius = {:.1f}'.format(crs.ellipsoid.semi_major_metre/1000)+' <km>\nb-axis radius = {:.1f}'.format(crs.ellipsoid.semi_minor_metre/1000)+' <km>\nc-axis radius = {:.1f}'.format(crs.ellipsoid.semi_major_metre/1000)+' <km>'
+        ellipsoid_info='\na_axis radius = {:.1f}'.format(crs.ellipsoid.semi_major_metre/1000)+' <km>\nb_axis radius = {:.1f}'.format(crs.ellipsoid.semi_minor_metre/1000)+' <km>\nc_axis radius = {:.1f}'.format(crs.ellipsoid.semi_major_metre/1000)+' <km>'
         
   
         crater_info=''
@@ -971,16 +1042,19 @@ class opencratertool:
                     'coordinate_system_name = {}'.format(self.expo_layer_crsinfo),
                     '#',
                     '# area_shapes:',
-                    #'unit_boundary = {vertex, sub_area, tag, lon, lat',
-                    '{}'.format(self.expo_area_info),
-                    '}',
+                    'unit_boundary = {vertex, sub_area, tag, lon, lat',
+                    '{}'.format(self.expo_area_info)+'}',             
+                    '#',
+                    '# area_info:',
+                    'sub_area = {name, area, perimeter',
+                    '{}'.format(self.expo_area_meta)+'}',
                     '#',
                     'Total_area = {:.13f} <km^2>'.format(self.expo_area_all),
                     'Total_perimeter = {:.13f} <km>'.format(self.expo_perimeter_all),
                     '#',
                     '# crater_diameters:',
                     'crater = {diam, fraction, lon, lat, topo_scale_factor',
-                    '{}'.format(crater_info)+'}',
+                    '{}'.format(crater_info)+'}'        
                 ]
             export_content='\n'.join(header)
             
@@ -1347,54 +1421,65 @@ class opencratertool:
         self.exportformatindex=self.con2.combo_export.currentIndex()
 
     def importareas(self):
-        temp = open(self.importfile,'r').read().splitlines()
+        data = read_scc(["sub_area", "unit_boundary"], self.importfile)
+        meta = data.get("sub_area", [])
+        
         layer = QgsProject.instance().mapLayersByName(self.area_layer_list[self.area_layer_index])[0]
         
         geod = str(CRS.from_proj4(layer.crs().toProj4()).get_geod()).split("'")[1]
+                    
         crs_source =QgsCoordinateReferenceSystem.fromProj4(layer.crs().toProj4())
         crs_lonlat = QgsCoordinateReferenceSystem.fromProj4('+proj=lonlat '+geod+' +no_defs +type=crs')
         LonlatToSource = QgsCoordinateTransform(crs_lonlat, crs_source, QgsProject.instance().transformContext())
- 
-        readarea=False
-        areacount=0
-        points=[]
-        tempname = ''
-        tempsize = 0
-        for line in temp:
-            if readarea:
-                tab=line.split('\t')
-                if len(tab)==5:
-                    points.append((float(tab[3]),float(tab[4])))
-                    
-                if line[0:11] == '# Area_name' or line[0:1]=='}':            
-                    polygon = QgsGeometry.fromMultiPolygonXY( [[[ QgsPointXY( p[0], p[1] ) for p in points ]]] )
-                    polygon.transform(LonlatToSource)
-                    
-                    # Write circle to shapefile               
-                    poly = QgsFeature(layer.fields())
-                    poly.setGeometry(polygon)
-                    # try:
 
-                    poly.setAttribute("area",tempsize)
-                    poly.setAttribute("area_name",tempname)
-                    layer.startEditing()
-                    layer.addFeature(poly)
-                    layer.commitChanges()
-                    areacount=areacount+1
-                    points=[]
+        
+        # group by sub_area (single exterior per group)
+        grouped = defaultdict(list)
+        for r in sorted(data.get("unit_boundary", []), key=lambda r: (r["sub_area"], r["vertex"])):
+            grouped[r["sub_area"]].append((float(r["lon"]), float(r["lat"])))
 
-            if line[0:11] == '# Area_name':
-                readarea=True
-                tempname = line.split('=')
-                tempname=tempname[1]
-                
-            if line[0:11] == '# Area_size':
-                tempsize = line.split('=')
-                tempsize=tempsize[1].split(' ')
-                tempsize=float(tempsize[1])
-            if line[0:1]=='}':
-                readarea=False
-        self.iface.messageBar().pushMessage(" Areas ("+str(areacount)+") imported", duration=10)
+        def close_ring(coords):
+            out = []
+            for xy in coords:
+                if not out or xy != out[-1]:
+                    out.append(xy)
+            if len(out) >= 3 and out[0] != out[-1]:
+                out.append(out[0])
+            return out
+            
+        added = 0
+        layer.startEditing()
+        for sa in sorted(grouped):
+            ext = close_ring(grouped[sa])
+            if len(ext) < 4:
+                continue
+            poly_xy = [[QgsPointXY(x, y) for x, y in ext]]
+            geom = QgsGeometry.fromPolygonXY(poly_xy)
+            geom.transform(LonlatToSource)
+
+            feat = QgsFeature(layer.fields())
+            feat.setGeometry(geom)
+            if layer.fields().indexFromName("area") != -1:
+                val = 0
+                if isinstance(meta, list) and 0 <= added < len(meta):
+                    val = float(meta[added].get("area", 0) or 0)
+                feat.setAttribute("area", val)
+            
+            if layer.fields().indexFromName("area_name") != -1:
+                    name = None
+                    if isinstance(meta, list) and 0 <= added < len(meta):
+                        name = meta[added].get("name")
+                    if not name:
+                        name = f"Area{added+1}"
+                    feat.setAttribute("area_name", name)
+            if layer.addFeature(feat):
+                added += 1
+        layer.commitChanges()
+
+        if added == 0:
+            self.iface.messageBar().pushWarning("No valid polygons.", duration=10)
+        else:
+            self.iface.messageBar().pushMessage(f"Subareas imported: {added}", duration=10)
 
     # Function to import craters from file
     def importcraters(self):
