@@ -1024,7 +1024,10 @@ class opencratertool:
         crs=CRS.from_proj4(layer.crs().toProj4())
         ellipsoid_info='\na_axis radius = {:.1f}'.format(crs.ellipsoid.semi_major_metre/1000)+' <km>\nb_axis radius = {:.1f}'.format(crs.ellipsoid.semi_minor_metre/1000)+' <km>\nc_axis radius = {:.1f}'.format(crs.ellipsoid.semi_major_metre/1000)+' <km>'
         
-  
+        save_options=QgsVectorFileWriter.SaveVectorOptions()
+        save_options.driverName="ESRI Shapefile"
+        save_options.fileEncoding="UTF-8"     
+
         crater_info=''
         for f in self.crater_data:
             crater_info=crater_info+'{:.13f}'.format(f.attribute('Diam_km'))+'\t'+f.perc+'\t'+'{:.13f}'.format(f.attribute('x_coord'))+'\t'+'{:.13f}'.format(f.attribute('y_coord'))+'\t'+'1'+'\n'
@@ -1084,32 +1087,32 @@ class opencratertool:
             # Export crater shapefile
             layer_crat = QgsProject.instance().mapLayersByName(self.crat_layer_list[self.crat_layer_index])[0]
             crs=layer_crat.crs()
+            transform_context = layer_crat.transformContext()
             layerFields = QgsFields()
             layerFields.append(QgsField('Diam_km', QVariant.Double))
             layerFields.append(QgsField('x_coord', QVariant.Double))
             layerFields.append(QgsField('y_coord', QVariant.Double))
             layerFields.append(QgsField('tag', QVariant.String))
-            writer = QgsVectorFileWriter(self.exportfile, 'UTF-8', layerFields,QgsWkbTypes.Polygon,crs,'ESRI Shapefile')
-            layer = self.iface.addVectorLayer(self.exportfile, '', 'ogr')
+            writer = QgsVectorFileWriter(self.exportfile,layerFields,QgsWkbTypes.Polygon,crs,transform_context,save_options)
             del(writer)
+            layer = self.iface.addVectorLayer(self.exportfile, '', 'ogr')
             layer.startEditing()
             for f in self.crater_data:
                 layer.addFeature(f)
             layer.commitChanges()
         elif self.exportformatindex==3:
             # Export crater as points shapefile
-            
             layer_crat = QgsProject.instance().mapLayersByName(self.crat_layer_list[self.crat_layer_index])[0]
             crs=layer_crat.crs()
-            
+            transform_context = layer_crat.transformContext()
             layerFields = QgsFields()
             layerFields.append(QgsField('Diam_km', QVariant.Double))
             layerFields.append(QgsField('x_coord', QVariant.Double))
             layerFields.append(QgsField('y_coord', QVariant.Double))
             layerFields.append(QgsField('tag', QVariant.String))
-            writer = QgsVectorFileWriter(self.exportfile, 'UTF-8', layerFields,QgsWkbTypes.Point,crs,'ESRI Shapefile')
-            layer = self.iface.addVectorLayer(self.exportfile, '', 'ogr')
+            writer = QgsVectorFileWriter(self.exportfile,layerFields,QgsWkbTypes.Point,crs,transform_context,save_options)
             del(writer)
+            layer = self.iface.addVectorLayer(self.exportfile, '', 'ogr')
             layer.startEditing()
             for f in self.crater_data:
                 center=f.geometry().centroid()
@@ -1207,9 +1210,13 @@ class opencratertool:
       
         else:
             crs=QgsProject.instance().crs()
+            transform_context=QgsProject.instance().transformContext()
             #pathtile=os.path.split(fn)
             craterfile=fn.split('.')[0]+'_CRATER.shp'
             areafile=fn.split('.')[0]+'_AREA.shp'
+            save_options=QgsVectorFileWriter.SaveVectorOptions()
+            save_options.driverName="ESRI Shapefile"
+            save_options.fileEncoding="UTF-8"
 
             if self.con1.check_create_crater.isChecked():
                 layerFields = QgsFields()
@@ -1217,9 +1224,9 @@ class opencratertool:
                 layerFields.append(QgsField('x_coord', QVariant.Double))
                 layerFields.append(QgsField('y_coord', QVariant.Double))
                 layerFields.append(QgsField('tag', QVariant.String))
-                writer = QgsVectorFileWriter(craterfile, 'UTF-8', layerFields,QgsWkbTypes.Polygon,crs,'ESRI Shapefile')
-                layer = self.iface.addVectorLayer(craterfile, '', 'ogr')
+                writer = QgsVectorFileWriter.create(craterfile,layerFields,QgsWkbTypes.Polygon,crs,transform_context,save_options)
                 del(writer)
+                layer = self.iface.addVectorLayer(craterfile, '', 'ogr')
                 layer.startEditing()
                 layer.commitChanges()
                 self.layerstyle()
@@ -1230,9 +1237,9 @@ class opencratertool:
                 layerFields = QgsFields()
                 layerFields.append(QgsField('area', QVariant.Double))
                 layerFields.append(QgsField('area_name', QVariant.String))
-                writer = QgsVectorFileWriter(areafile, 'UTF-8', layerFields,QgsWkbTypes.Polygon,crs,'ESRI Shapefile')
-                layer = self.iface.addVectorLayer(areafile, '', 'ogr')
+                writer = QgsVectorFileWriter.create(areafile,layerFields,QgsWkbTypes.Polygon,crs,transform_context,save_options)
                 del(writer)
+                layer = self.iface.addVectorLayer(areafile, '', 'ogr')
                 layer.startEditing()
                 layer.commitChanges()
                 self.layerstyle()
