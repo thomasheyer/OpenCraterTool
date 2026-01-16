@@ -1093,7 +1093,7 @@ class opencratertool:
             layerFields.append(QgsField('x_coord', QVariant.Double))
             layerFields.append(QgsField('y_coord', QVariant.Double))
             layerFields.append(QgsField('tag', QVariant.String))
-            writer = QgsVectorFileWriter(self.exportfile,layerFields,QgsWkbTypes.Polygon,crs,transform_context,save_options)
+            writer = QgsVectorFileWriter.create(self.exportfile,layerFields,QgsWkbTypes.Polygon,crs,transform_context,save_options)
             del(writer)
             layer = self.iface.addVectorLayer(self.exportfile, '', 'ogr')
             layer.startEditing()
@@ -1110,7 +1110,7 @@ class opencratertool:
             layerFields.append(QgsField('x_coord', QVariant.Double))
             layerFields.append(QgsField('y_coord', QVariant.Double))
             layerFields.append(QgsField('tag', QVariant.String))
-            writer = QgsVectorFileWriter(self.exportfile,layerFields,QgsWkbTypes.Point,crs,transform_context,save_options)
+            writer = QgsVectorFileWriter.create(self.exportfile,layerFields,QgsWkbTypes.Point,crs,transform_context,save_options)
             del(writer)
             layer = self.iface.addVectorLayer(self.exportfile, '', 'ogr')
             layer.startEditing()
@@ -1949,10 +1949,13 @@ class opencratertool:
             
                     layer_crat = QgsProject.instance().mapLayersByName(self.crat_layer_list[self.crat_layer_index])[0]
                     crs=layer_crat.crs()
-                    
+                    transform_context = layer_crat.transformContext()
                     layerFields = QgsFields()
                     layerFields.append(QgsField('Grid_Cell', QVariant.String))
-                    writer = QgsVectorFileWriter(self.exportfile, 'UTF-8', layerFields,QgsWkbTypes.Polygon,crs,'ESRI Shapefile')
+                    save_options=QgsVectorFileWriter.SaveVectorOptions()
+                    save_options.driverName="ESRI Shapefile"
+                    save_options.fileEncoding="UTF-8"  
+                    writer = QgsVectorFileWriter.create(self.exportfile, layerFields,QgsWkbTypes.Polygon,crs,tranform_context,save_options)
                     layer = self.iface.addVectorLayer(self.exportfile, '', 'ogr')
                     del(writer)
 
