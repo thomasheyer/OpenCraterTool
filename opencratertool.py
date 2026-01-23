@@ -123,7 +123,7 @@ def read_scc(struct_names=None, filepath=None):
 
 def get_geod_str(source_layer):
     """
-    Extracts the geod string from the source CRS for transorms.
+    Extracts the geod string from the source CRS for transforms.
     """
     try:
         return str(CRS.from_proj4(source_layer.crs().toProj()).get_geod()).split("'")[1]
