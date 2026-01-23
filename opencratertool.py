@@ -1491,7 +1491,7 @@ class opencratertool:
         layer.commitChanges()
 
         if added == 0:
-            self.iface.messageBar().pushWarning("No valid polygons.", duration=10)
+            self.iface.messageBar().pushWarning("No valid polygons.")
         else:
             self.iface.messageBar().pushMessage(f"Subareas imported: {added}", duration=10)
 
