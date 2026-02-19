@@ -31,7 +31,7 @@ from qgis.PyQt.QtWidgets import QAction, QFileDialog, QMenu
 from qgis.gui import QgsMapTool, QgsRubberBand,QgsModelGraphicsScene, QgsModelGraphicsView,QgsHighlight
 from qgis.PyQt.QtCore import Qt, pyqtSignal, QVariant
 
-from math import sqrt, pi, cos, sin
+from math import sqrt, pi, cos, sin, isclose
 from qgis.core import QgsFeature, QgsGeometry, QgsWkbTypes, QgsVectorLayer, QgsField, QgsFields, QgsVectorFileWriter, QgsCoordinateReferenceSystem, QgsCoordinateTransform,QgsProject, Qgis, QgsWkbTypes, QgsPointXY,QgsSymbol,QgsRendererCategory,QgsCategorizedSymbolRenderer,QgsSimpleLineSymbolLayer,QgsSingleSymbolRenderer, QgsFeatureRequest,QgsRectangle
 import datetime,time
 import numpy as np
@@ -121,7 +121,14 @@ def read_scc(struct_names=None, filepath=None):
 
     return results
 
-
+def get_geod_str(source_layer):
+    """
+    Extracts the geod string from the source CRS for transforms.
+    """
+    try:
+        return str(CRS.from_proj4(source_layer.crs().toProj()).get_geod()).split("'")[1]
+    except Exception as e:
+        raise TypeError("You may need to update pyproj to at least 3.7.1. See https://github.com/pyproj4/pyproj/issues/1451#issue-2574654114") from e
 class opencratertool:
     """QGIS Plugin Implementation."""
 
@@ -152,8 +159,6 @@ class opencratertool:
         # Must be set in initGui() to survive plugin reloads
         self.first_start = None
         
-
-
     # noinspection PyMethodMayBeStatic
     def tr(self, message):
        # noinspection PyTypeChecker,PyArgumentList,PyCallByClass
@@ -603,17 +608,17 @@ class opencratertool:
         def twoPointCircle(self,segments):
             try:
                 # Transform projection from source to latlon
-                crs_source =QgsCoordinateReferenceSystem.fromProj4(self.iface.activeLayer().crs().toProj4())
-
-                geod = str(CRS.from_proj4(self.iface.activeLayer().crs().toProj4()).get_geod()).split("'")[1]
-                crs_lonlat = QgsCoordinateReferenceSystem.fromProj4('+proj=lonlat '+geod+' +no_defs +type=crs')
+                crs_source = QgsCoordinateReferenceSystem('PROJ:'+self.iface.activeLayer().crs().toProj())
+                geod = get_geod_str(self.iface.activeLayer())
+                crs_lonlat = QgsCoordinateReferenceSystem('PROJ:+proj=lonlat '+geod+' +no_defs +type=crs')
                 SourceToLonlat = QgsCoordinateTransform(crs_source, crs_lonlat, QgsProject.instance().transformContext())
+
 
                 # Calculate center of two points
                 p1= SourceToLonlat.transform(self.point1)
                 p2= SourceToLonlat.transform(self.point2)
                 
-                crs_AeqdCenter = QgsCoordinateReferenceSystem.fromProj4('+proj=aeqd +lat_0='+str(p1.y())+' +lon_0='+str(p1.x())+' +x_0=0 +y_0=0 '+geod+' +units=m +no_defs +type=crs')
+                crs_AeqdCenter = QgsCoordinateReferenceSystem('PROJ:+proj=aeqd +lat_0='+str(p1.y())+' +lon_0='+str(p1.x())+' +x_0=0 +y_0=0 '+geod+' +units=m +no_defs +type=crs')
                 LonlatTocrs_AeqdS = QgsCoordinateTransform(crs_lonlat, crs_AeqdCenter, QgsProject.instance().transformContext())
                 AeqdSToLonlat = QgsCoordinateTransform(crs_AeqdCenter, crs_lonlat, QgsProject.instance().transformContext())
                 
@@ -625,7 +630,7 @@ class opencratertool:
                 self.center_lon = center_lonlat.x()
                 self.center_lat = center_lonlat.y()
 
-                crs_Aeqd = QgsCoordinateReferenceSystem.fromProj4('+proj=aeqd +lat_0='+str(self.center_lat)+' +lon_0='+str(self.center_lon)+' +x_0=0 +y_0=0 '+geod+' +units=m +no_defs +type=crs')
+                crs_Aeqd = QgsCoordinateReferenceSystem('PROJ:+proj=aeqd +lat_0='+str(self.center_lat)+' +lon_0='+str(self.center_lon)+' +x_0=0 +y_0=0 '+geod+' +units=m +no_defs +type=crs')
                 SourceToAeqd = QgsCoordinateTransform(crs_source, crs_Aeqd, QgsProject.instance().transformContext())
 
                 # Project points 
@@ -649,7 +654,7 @@ class opencratertool:
                 # Cut circles that intersect the dateline and the poles
                 if center_lonlat.y()>0:
                     #North
-                    crs_AqedNorth = QgsCoordinateReferenceSystem.fromProj4('+proj=aeqd +lat_0=90 +lon_0=180 +x_0=0 +y_0=0 '+geod+' +units=m +no_defs +type=crs')
+                    crs_AqedNorth = QgsCoordinateReferenceSystem('PROJ:+proj=aeqd +lat_0=90 +lon_0=180 +x_0=0 +y_0=0 '+geod+' +units=m +no_defs +type=crs')
                     AeqdToAqedNorth = QgsCoordinateTransform(crs_Aeqd, crs_AqedNorth, QgsProject.instance().transformContext())
                     AqedNorthToSource = QgsCoordinateTransform(crs_AqedNorth, crs_source, QgsProject.instance().transformContext())
 
@@ -662,7 +667,7 @@ class opencratertool:
                     
                 else:
                     #South
-                    crs_AqedSouth = QgsCoordinateReferenceSystem.fromProj4('+proj=aeqd +lat_0=-90 +lon_0=180 +x_0=0 +y_0=0 '+geod+' +units=m +no_defs +type=crs')
+                    crs_AqedSouth = QgsCoordinateReferenceSystem('PROJ:+proj=aeqd +lat_0=-90 +lon_0=180 +x_0=0 +y_0=0 '+geod+' +units=m +no_defs +type=crs')
                     AeqdToAqedSouth = QgsCoordinateTransform(crs_Aeqd, crs_AqedSouth, QgsProject.instance().transformContext())
                     AqedSouthToSource = QgsCoordinateTransform(crs_AqedSouth, crs_source, QgsProject.instance().transformContext())
                     
@@ -758,10 +763,10 @@ class opencratertool:
         def threePointCircle(self,segments):
             try:
                 # Transform projection from source to latlon
-                crs_source =QgsCoordinateReferenceSystem.fromProj4(self.iface.activeLayer().crs().toProj4())
-                
-                geod = str(CRS.from_proj4(self.iface.activeLayer().crs().toProj4()).get_geod()).split("'")[1]
-                crs_lonlat = QgsCoordinateReferenceSystem.fromProj4('+proj=lonlat '+geod+' +no_defs +type=crs')
+
+                crs_source =QgsCoordinateReferenceSystem('PROJ:'+self.iface.activeLayer().crs().toProj())
+                geod = get_geod_str(self.iface.activeLayer())
+                crs_lonlat = QgsCoordinateReferenceSystem('PROJ:+proj=lonlat '+geod+' +no_defs +type=crs')
                 SourceToLonlat = QgsCoordinateTransform(crs_source, crs_lonlat, QgsProject.instance().transformContext())
 
                 # Calculate center of two points
@@ -780,6 +785,8 @@ class opencratertool:
                 a = (x2-x3)**2 + (y2-y3)**2
                 b = (x3-x1)**2 + (y3-y1)**2
                 s = 2*(a*b + b*c + c*a) - (a*a + b*b + c*c) 
+                if isclose(s,0):
+                    return
                 px = (a*(b+c-a)*x1 + b*(c+a-b)*x2 + c*(a+b-c)*x3) / s   # center x
                 py = (a*(b+c-a)*y1 + b*(c+a-b)*y2 + c*(a+b-c)*y3) / s   # center y
                 ar = a**0.5
@@ -789,7 +796,7 @@ class opencratertool:
                 self.center_lon=px
                 self.center_lat=py
   
-                crs_Aeqd = QgsCoordinateReferenceSystem.fromProj4('+proj=aeqd +lat_0='+str(self.center_lat)+' +lon_0='+str(self.center_lon)+' +x_0=0 +y_0=0 '+geod+' +units=m +no_defs +type=crs')
+                crs_Aeqd = QgsCoordinateReferenceSystem('PROJ:+proj=aeqd +lat_0='+str(self.center_lat)+' +lon_0='+str(self.center_lon)+' +x_0=0 +y_0=0 '+geod+' +units=m +no_defs +type=crs')
                 SourceToAeqd = QgsCoordinateTransform(crs_source, crs_Aeqd, QgsProject.instance().transformContext())
                 AeqdToSource = QgsCoordinateTransform(crs_Aeqd, crs_source, QgsProject.instance().transformContext())
 
@@ -828,7 +835,7 @@ class opencratertool:
 
                 if self.center_lon>0:
                     #North
-                    crs_AqedNorth = QgsCoordinateReferenceSystem.fromProj4('+proj=aeqd +lat_0=90 +lon_0=180 +x_0=0 +y_0=0 '+geod+' +units=m +no_defs +type=crs')
+                    crs_AqedNorth = QgsCoordinateReferenceSystem('PROJ:+proj=aeqd +lat_0=90 +lon_0=180 +x_0=0 +y_0=0 '+geod+' +units=m +no_defs +type=crs')
                     AeqdToAqedNorth = QgsCoordinateTransform(crs_Aeqd, crs_AqedNorth, QgsProject.instance().transformContext())
                     AqedNorthToSource = QgsCoordinateTransform(crs_AqedNorth, crs_source, QgsProject.instance().transformContext())
 
@@ -841,7 +848,7 @@ class opencratertool:
                     
                 else:
                     #South
-                    crs_AqedSouth = QgsCoordinateReferenceSystem.fromProj4('+proj=aeqd +lat_0=-90 +lon_0=180 +x_0=0 +y_0=0 '+geod+' +units=m +no_defs +type=crs')
+                    crs_AqedSouth = QgsCoordinateReferenceSystem('PROJ:+proj=aeqd +lat_0=-90 +lon_0=180 +x_0=0 +y_0=0 '+geod+' +units=m +no_defs +type=crs')
                     AeqdToAqedSouth = QgsCoordinateTransform(crs_Aeqd, crs_AqedSouth, QgsProject.instance().transformContext())
                     AqedSouthToSource = QgsCoordinateTransform(crs_AqedSouth, crs_source, QgsProject.instance().transformContext())
                     
@@ -851,8 +858,8 @@ class opencratertool:
                     polygonB.transform(AqedSouthToSource)
                     self.rb.reset(QgsWkbTypes.PolygonGeometry)
                     self.rb.addGeometry(polygonB)
-            except:
-                pass
+            except Exception as e:
+                raise e
 
         def canvasPressEvent(self, e):
             pass
@@ -905,8 +912,8 @@ class opencratertool:
                                 
                                 self.craterDone=True
                                 self.rb.reset(QgsWkbTypes.PolygonGeometry)
-                            except:
-                                self.iface.messageBar().pushMessage("Wrong Shapefile", duration=3)  
+                            except Exception as e:
+                                self.iface.messageBar().pushMessage(f"Error {e}. Possibly Wrong Shapefile", duration=3)  
                 else:
                     self.rb.reset(QgsWkbTypes.PolygonGeometry)
                     self.firstClick=False
@@ -924,10 +931,10 @@ class opencratertool:
         layer_area = QgsProject.instance().mapLayersByName(self.area_layer_list[self.area_layer_index])[0]
         layer_crat = QgsProject.instance().mapLayersByName(self.crat_layer_list[self.crat_layer_index])[0]
         
-        crs_sourceA = QgsCoordinateReferenceSystem.fromProj4(layer_area.crs().toProj4())
-        crs_sourceC = QgsCoordinateReferenceSystem.fromProj4(layer_crat.crs().toProj4())
-        geod = str(CRS.from_proj4(layer_area.crs().toProj4()).get_geod()).split("'")[1]
-        crs_lonlat = QgsCoordinateReferenceSystem.fromProj4('+proj=lonlat '+geod+' +no_defs +type=crs')
+        crs_sourceA = QgsCoordinateReferenceSystem('PROJ:'+layer_area.crs().toProj())
+        crs_sourceC = QgsCoordinateReferenceSystem('PROJ:'+layer_crat.crs().toProj())
+        geod = get_geod_str(layer_area)
+        crs_lonlat = QgsCoordinateReferenceSystem('PROJ:+proj=lonlat '+geod+' +no_defs +type=crs')
         SourceAToLonlat = QgsCoordinateTransform(crs_sourceA, crs_lonlat, QgsProject.instance().transformContext())
         SourceAToSourceC = QgsCoordinateTransform(crs_sourceA, crs_sourceC, QgsProject.instance().transformContext())
         
@@ -957,7 +964,7 @@ class opencratertool:
                     area_vector_counter=area_vector_counter+1
                     area_vectors=area_vectors+str(area_vector_counter)+'\t'+str(feat.id()+1)+'\text\t'+'{:.14f}'.format(shapepoints[i].x())+'\t'+'{:.14f}'.format(shapepoints[i].y())+'\n'
                 
-                crs_laea = QgsCoordinateReferenceSystem.fromProj4('+proj=laea +lat_ts=0 +lat_0='+str(round(center_lonlat.y()))+' +lon_0='+str(round(center_lonlat.x()))+' '+geod+' +units=m +no_defs +type=crs')
+                crs_laea = QgsCoordinateReferenceSystem('PROJ:+proj=laea +lat_ts=0 +lat_0='+str(round(center_lonlat.y()))+' +lon_0='+str(round(center_lonlat.x()))+' '+geod+' +units=m +no_defs +type=crs')
                 
                 SourceAToLaea  = QgsCoordinateTransform(crs_sourceA, crs_laea, QgsProject.instance().transformContext())
                 SourceCToLaea  = QgsCoordinateTransform(crs_sourceC, crs_laea, QgsProject.instance().transformContext())
@@ -1021,10 +1028,13 @@ class opencratertool:
         self.listcraters()
  
         layer = QgsProject.instance().mapLayersByName(self.crat_layer_list[self.crat_layer_index])[0]
-        crs=CRS.from_proj4(layer.crs().toProj4())
+        crs=CRS.from_proj4(layer.crs().toProj())
         ellipsoid_info='\na_axis radius = {:.1f}'.format(crs.ellipsoid.semi_major_metre/1000)+' <km>\nb_axis radius = {:.1f}'.format(crs.ellipsoid.semi_minor_metre/1000)+' <km>\nc_axis radius = {:.1f}'.format(crs.ellipsoid.semi_major_metre/1000)+' <km>'
         
-  
+        save_options=QgsVectorFileWriter.SaveVectorOptions()
+        save_options.driverName="ESRI Shapefile"
+        save_options.fileEncoding="UTF-8"     
+
         crater_info=''
         for f in self.crater_data:
             crater_info=crater_info+'{:.13f}'.format(f.attribute('Diam_km'))+'\t'+f.perc+'\t'+'{:.13f}'.format(f.attribute('x_coord'))+'\t'+'{:.13f}'.format(f.attribute('y_coord'))+'\t'+'1'+'\n'
@@ -1084,32 +1094,32 @@ class opencratertool:
             # Export crater shapefile
             layer_crat = QgsProject.instance().mapLayersByName(self.crat_layer_list[self.crat_layer_index])[0]
             crs=layer_crat.crs()
+            transform_context = layer_crat.transformContext()
             layerFields = QgsFields()
             layerFields.append(QgsField('Diam_km', QVariant.Double))
             layerFields.append(QgsField('x_coord', QVariant.Double))
             layerFields.append(QgsField('y_coord', QVariant.Double))
             layerFields.append(QgsField('tag', QVariant.String))
-            writer = QgsVectorFileWriter(self.exportfile, 'UTF-8', layerFields,QgsWkbTypes.Polygon,crs,'ESRI Shapefile')
-            layer = self.iface.addVectorLayer(self.exportfile, '', 'ogr')
+            writer = QgsVectorFileWriter.create(self.exportfile,layerFields,QgsWkbTypes.Polygon,crs,transform_context,save_options)
             del(writer)
+            layer = self.iface.addVectorLayer(self.exportfile, '', 'ogr')
             layer.startEditing()
             for f in self.crater_data:
                 layer.addFeature(f)
             layer.commitChanges()
         elif self.exportformatindex==3:
             # Export crater as points shapefile
-            
             layer_crat = QgsProject.instance().mapLayersByName(self.crat_layer_list[self.crat_layer_index])[0]
             crs=layer_crat.crs()
-            
+            transform_context = layer_crat.transformContext()
             layerFields = QgsFields()
             layerFields.append(QgsField('Diam_km', QVariant.Double))
             layerFields.append(QgsField('x_coord', QVariant.Double))
             layerFields.append(QgsField('y_coord', QVariant.Double))
             layerFields.append(QgsField('tag', QVariant.String))
-            writer = QgsVectorFileWriter(self.exportfile, 'UTF-8', layerFields,QgsWkbTypes.Point,crs,'ESRI Shapefile')
-            layer = self.iface.addVectorLayer(self.exportfile, '', 'ogr')
+            writer = QgsVectorFileWriter.create(self.exportfile,layerFields,QgsWkbTypes.Point,crs,transform_context,save_options)
             del(writer)
+            layer = self.iface.addVectorLayer(self.exportfile, '', 'ogr')
             layer.startEditing()
             for f in self.crater_data:
                 center=f.geometry().centroid()
@@ -1207,9 +1217,13 @@ class opencratertool:
       
         else:
             crs=QgsProject.instance().crs()
+            transform_context=QgsProject.instance().transformContext()
             #pathtile=os.path.split(fn)
             craterfile=fn.split('.')[0]+'_CRATER.shp'
             areafile=fn.split('.')[0]+'_AREA.shp'
+            save_options=QgsVectorFileWriter.SaveVectorOptions()
+            save_options.driverName="ESRI Shapefile"
+            save_options.fileEncoding="UTF-8"
 
             if self.con1.check_create_crater.isChecked():
                 layerFields = QgsFields()
@@ -1217,9 +1231,9 @@ class opencratertool:
                 layerFields.append(QgsField('x_coord', QVariant.Double))
                 layerFields.append(QgsField('y_coord', QVariant.Double))
                 layerFields.append(QgsField('tag', QVariant.String))
-                writer = QgsVectorFileWriter(craterfile, 'UTF-8', layerFields,QgsWkbTypes.Polygon,crs,'ESRI Shapefile')
-                layer = self.iface.addVectorLayer(craterfile, '', 'ogr')
+                writer = QgsVectorFileWriter.create(craterfile,layerFields,QgsWkbTypes.Polygon,crs,transform_context,save_options)
                 del(writer)
+                layer = self.iface.addVectorLayer(craterfile, '', 'ogr')
                 layer.startEditing()
                 layer.commitChanges()
                 self.layerstyle()
@@ -1230,9 +1244,9 @@ class opencratertool:
                 layerFields = QgsFields()
                 layerFields.append(QgsField('area', QVariant.Double))
                 layerFields.append(QgsField('area_name', QVariant.String))
-                writer = QgsVectorFileWriter(areafile, 'UTF-8', layerFields,QgsWkbTypes.Polygon,crs,'ESRI Shapefile')
-                layer = self.iface.addVectorLayer(areafile, '', 'ogr')
+                writer = QgsVectorFileWriter.create(areafile,layerFields,QgsWkbTypes.Polygon,crs,transform_context,save_options)
                 del(writer)
+                layer = self.iface.addVectorLayer(areafile, '', 'ogr')
                 layer.startEditing()
                 layer.commitChanges()
                 self.layerstyle()
@@ -1426,10 +1440,10 @@ class opencratertool:
         
         layer = QgsProject.instance().mapLayersByName(self.area_layer_list[self.area_layer_index])[0]
         
-        geod = str(CRS.from_proj4(layer.crs().toProj4()).get_geod()).split("'")[1]
+        geod = get_geod_str(layer)
                     
-        crs_source =QgsCoordinateReferenceSystem.fromProj4(layer.crs().toProj4())
-        crs_lonlat = QgsCoordinateReferenceSystem.fromProj4('+proj=lonlat '+geod+' +no_defs +type=crs')
+        crs_source =QgsCoordinateReferenceSystem('PROJ:'+layer.crs().toProj())
+        crs_lonlat = QgsCoordinateReferenceSystem('PROJ:+proj=lonlat '+geod+' +no_defs +type=crs')
         LonlatToSource = QgsCoordinateTransform(crs_lonlat, crs_source, QgsProject.instance().transformContext())
 
         
@@ -1477,7 +1491,7 @@ class opencratertool:
         layer.commitChanges()
 
         if added == 0:
-            self.iface.messageBar().pushWarning("No valid polygons.", duration=10)
+            self.iface.messageBar().pushWarning("No valid polygons.")
         else:
             self.iface.messageBar().pushMessage(f"Subareas imported: {added}", duration=10)
 
@@ -1497,9 +1511,9 @@ class opencratertool:
                     clat=tab[3]
                     cdiam=float(tab[0])*1000
 
-                    geod = str(CRS.from_proj4(layer.crs().toProj4()).get_geod()).split("'")[1]
-                    crs_source = QgsCoordinateReferenceSystem.fromProj4(layer.crs().toProj4())
-                    crs_Aeqd = QgsCoordinateReferenceSystem.fromProj4('+proj=aeqd +lat_0='+str(clat)+' +lon_0='+str(clon)+' +x_0=0 +y_0=0 '+geod+' +units=m +no_defs +type=crs')
+                    geod = get_geod_str(layer)
+                    crs_source = QgsCoordinateReferenceSystem('PROJ:'+layer.crs().toProj())
+                    crs_Aeqd = QgsCoordinateReferenceSystem('PROJ:+proj=aeqd +lat_0='+str(clat)+' +lon_0='+str(clon)+' +x_0=0 +y_0=0 '+geod+' +units=m +no_defs +type=crs')
                     AeqdToSource = QgsCoordinateTransform(crs_Aeqd, crs_source, QgsProject.instance().transformContext())
 
                     point1 = QgsPointXY( 0, cdiam/2)
@@ -1520,7 +1534,7 @@ class opencratertool:
                     # split on poles and dateline
                     if float(clat)>0:
                         #North
-                        crs_AqedNorth = QgsCoordinateReferenceSystem.fromProj4('+proj=aeqd +lat_0=90 +lon_0=180 +x_0=0 +y_0=0 '+geod+' +units=m +no_defs +type=crs')
+                        crs_AqedNorth = QgsCoordinateReferenceSystem('PROJ:+proj=aeqd +lat_0=90 +lon_0=180 +x_0=0 +y_0=0 '+geod+' +units=m +no_defs +type=crs')
                         AeqdToAqedNorth = QgsCoordinateTransform(crs_Aeqd, crs_AqedNorth, QgsProject.instance().transformContext())
                         AqedNorthToSource = QgsCoordinateTransform(crs_AqedNorth, crs_source, QgsProject.instance().transformContext())
 
@@ -1530,7 +1544,7 @@ class opencratertool:
 
                     else:
                         #South
-                        crs_AqedSouth = QgsCoordinateReferenceSystem.fromProj4('+proj=aeqd +lat_0=-90 +lon_0=180 +x_0=0 +y_0=0 '+geod+' +units=m +no_defs +type=crs')
+                        crs_AqedSouth = QgsCoordinateReferenceSystem('PROJ:+proj=aeqd +lat_0=-90 +lon_0=180 +x_0=0 +y_0=0 '+geod+' +units=m +no_defs +type=crs')
                         AeqdToAqedSouth = QgsCoordinateTransform(crs_Aeqd, crs_AqedSouth, QgsProject.instance().transformContext())
                         AqedSouthToSource = QgsCoordinateTransform(crs_AqedSouth, crs_source, QgsProject.instance().transformContext())
                         
@@ -1615,10 +1629,10 @@ class opencratertool:
         layer1 = QgsProject.instance().mapLayersByName(self.crat_layer_list[self.crat_layer_index])[0]
         layer2 = QgsProject.instance().mapLayersByName(self.crat_layer_list[self.refe_layer_index])[0]
 
-        crs_source2 =QgsCoordinateReferenceSystem.fromProj4(layer2.crs().toProj4())
+        crs_source2 =QgsCoordinateReferenceSystem('PROJ:'+layer2.crs().toProj())
         
-        geod = str(CRS.from_proj4(layer2.crs().toProj4()).get_geod()).split("'")[1]
-        crs_lonlat = QgsCoordinateReferenceSystem.fromProj4('+proj=lonlat '+geod+' +no_defs +type=crs')
+        geod = get_geod_str(layer2)
+        crs_lonlat = QgsCoordinateReferenceSystem('PROJ:+proj=lonlat '+geod+' +no_defs +type=crs')
         LonlatToSource2 = QgsCoordinateTransform(crs_lonlat, crs_source2, QgsProject.instance().transformContext())
 
         self.con8.progressBar.show()
@@ -1661,7 +1675,7 @@ class opencratertool:
                 # Check if the diameter is smaller than double or larger than half the size of the reference diameter
                 if diam < indiam*2 and diam > indiam*0.5:
 
-                    crs_Aeqd = QgsCoordinateReferenceSystem.fromProj4('+proj=aeqd +lat_0='+str(y)+' +lon_0='+str(x)+' +x_0=0 +y_0=0 '+geod+' +units=m +no_defs +type=crs')
+                    crs_Aeqd = QgsCoordinateReferenceSystem('PROJ:+proj=aeqd +lat_0='+str(y)+' +lon_0='+str(x)+' +x_0=0 +y_0=0 '+geod+' +units=m +no_defs +type=crs')
                     LonlatToAeqd = QgsCoordinateTransform(crs_lonlat, crs_Aeqd, QgsProject.instance().transformContext())
 
                     center2 = QgsPointXY( float(f.attribute('x_coord')), float(f.attribute('y_coord')))
@@ -1739,7 +1753,7 @@ class opencratertool:
                 diam=float(f.attribute('Diam_km'))
                 if diam < indiam*2 and diam > indiam*0.5:
 
-                    crs_Aeqd = QgsCoordinateReferenceSystem.fromProj4('+proj=aeqd +lat_0='+str(y)+' +lon_0='+str(x)+' +x_0=0 +y_0=0 '+geod+' +units=m +no_defs +type=crs')
+                    crs_Aeqd = QgsCoordinateReferenceSystem('PROJ:+proj=aeqd +lat_0='+str(y)+' +lon_0='+str(x)+' +x_0=0 +y_0=0 '+geod+' +units=m +no_defs +type=crs')
                     LonlatToAeqd = QgsCoordinateTransform(crs_lonlat, crs_Aeqd, QgsProject.instance().transformContext())
 
                     center2 = QgsPointXY( float(f.attribute('x_coord')), float(f.attribute('y_coord')))
@@ -1942,10 +1956,13 @@ class opencratertool:
             
                     layer_crat = QgsProject.instance().mapLayersByName(self.crat_layer_list[self.crat_layer_index])[0]
                     crs=layer_crat.crs()
-                    
+                    transform_context = layer_crat.transformContext()
                     layerFields = QgsFields()
                     layerFields.append(QgsField('Grid_Cell', QVariant.String))
-                    writer = QgsVectorFileWriter(self.exportfile, 'UTF-8', layerFields,QgsWkbTypes.Polygon,crs,'ESRI Shapefile')
+                    save_options=QgsVectorFileWriter.SaveVectorOptions()
+                    save_options.driverName="ESRI Shapefile"
+                    save_options.fileEncoding="UTF-8"  
+                    writer = QgsVectorFileWriter.create(self.exportfile, layerFields,QgsWkbTypes.Polygon,crs,tranform_context,save_options)
                     layer = self.iface.addVectorLayer(self.exportfile, '', 'ogr')
                     del(writer)
 
