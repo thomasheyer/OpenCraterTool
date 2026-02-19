@@ -5,8 +5,8 @@
                                  A QGIS plugin
  A tool for crater size-frequency measurements
                               -------------------
-        begin                : 2025-09-12
-        copyright            : (C) 2025 by Thomas Heyer
+        begin                : 2026-02-19
+        copyright            : (C) 2026 by Thomas Heyer
         email                : thomas.heyer@uni-muenster.de
  ***************************************************************************/
 
@@ -18,21 +18,26 @@
  *   (at your option) any later version.                                   *
  *                                                                         *
  ***************************************************************************/
+
+        The authors thank Gregory Michael and David Minton
+        for valuable contributions to the development of this tool.
+
+ /**************************************************************************/
 """
 
-from PyQt5.QtWidgets import QApplication, QWidget, QGraphicsScene
+from PyQt5.QtWidgets import QApplication, QGraphicsScene
 from PyQt5 import QtCore
 
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
 from qgis.PyQt.QtGui import QIcon, QColor
 from qgis.PyQt.QtWidgets import QAction, QFileDialog, QMenu
 
-# --
-from qgis.gui import QgsMapTool, QgsRubberBand,QgsModelGraphicsScene, QgsModelGraphicsView,QgsHighlight
+from qgis.gui import QgsMapTool, QgsRubberBand
 from qgis.PyQt.QtCore import Qt, pyqtSignal, QVariant
 
 from math import sqrt, pi, cos, sin, isclose
-from qgis.core import QgsFeature, QgsGeometry, QgsWkbTypes, QgsVectorLayer, QgsField, QgsFields, QgsVectorFileWriter, QgsCoordinateReferenceSystem, QgsCoordinateTransform,QgsProject, Qgis, QgsWkbTypes, QgsPointXY,QgsSymbol,QgsRendererCategory,QgsCategorizedSymbolRenderer,QgsSimpleLineSymbolLayer,QgsSingleSymbolRenderer, QgsFeatureRequest,QgsRectangle
+from qgis.core import QgsFeature, QgsGeometry, QgsWkbTypes, QgsField, QgsFields, QgsVectorFileWriter, QgsCoordinateReferenceSystem, QgsCoordinateTransform,QgsProject, Qgis, QgsPointXY,QgsSymbol,QgsRendererCategory,QgsCategorizedSymbolRenderer,QgsSimpleLineSymbolLayer,QgsSingleSymbolRenderer, QgsFeatureRequest,QgsRectangle
+
 import datetime,time
 import numpy as np
 from pyproj import CRS
@@ -212,7 +217,7 @@ class opencratertool:
     def initGui(self):
 
         # Set version of the tool
-        self.version='Version: 0.3 (2025-09-12)'
+        self.version='Version: 0.4 (2026-02-19)'
 
         # Create icon for two point tool
         icon_path = ':/plugins/opencratertool/ui/iconA.png'
@@ -1962,7 +1967,7 @@ class opencratertool:
                     save_options=QgsVectorFileWriter.SaveVectorOptions()
                     save_options.driverName="ESRI Shapefile"
                     save_options.fileEncoding="UTF-8"  
-                    writer = QgsVectorFileWriter.create(self.exportfile, layerFields,QgsWkbTypes.Polygon,crs,tranform_context,save_options)
+                    writer = QgsVectorFileWriter.create(self.exportfile, layerFields,QgsWkbTypes.Polygon,crs,transform_context,save_options)
                     layer = self.iface.addVectorLayer(self.exportfile, '', 'ogr')
                     del(writer)
 
