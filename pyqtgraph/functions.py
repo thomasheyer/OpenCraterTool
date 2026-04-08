@@ -1214,17 +1214,17 @@ def clip_array(arr, vmin, vmax, out=None):
         return np.clip(arr, vmin, vmax, out=out)
 
     if vmin is None:
-        return np.core.umath.minimum(arr, vmax, out=out)
+        return np.minimum(arr, vmax, out=out)
     elif vmax is None:
-        return np.core.umath.maximum(arr, vmin, out=out)
+        return np.maximum(arr, vmin, out=out)
     elif _win32_clip_workaround_needed:
         if out is None:
             out = np.empty(arr.shape, dtype=np.find_common_type([arr.dtype], [type(vmax)]))
-        out = np.core.umath.minimum(arr, vmax, out=out)
-        return np.core.umath.maximum(out, vmin, out=out)
+        out = np.minimum(arr, vmax, out=out)
+        return np.maximum(out, vmin, out=out)
 
     else:
-        return np.core.umath.clip(arr, vmin, vmax, out=out)
+        return np.clip(arr, vmin, vmax, out=out)
 
 
 def _rescaleData_nditer(data_in, scale, offset, work_dtype, out_dtype, clip):

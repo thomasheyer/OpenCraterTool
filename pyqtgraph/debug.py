@@ -1118,7 +1118,7 @@ def listQThreads():
     thr = findObj('[Tt]hread')
     thr = [t for t in thr if isinstance(t, QtCore.QThread)]
     try:
-        from PyQt5 import sip
+        from qgis.PyQt import sip
     except ImportError:
         import sip
     for t in thr:
