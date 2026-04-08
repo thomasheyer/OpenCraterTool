@@ -5,7 +5,7 @@
                                  A QGIS plugin
  A tool for crater size-frequency measurements
                               -------------------
-        begin                : 2026-02-19
+        begin                : 2026-04-08
         copyright            : (C) 2026 by Thomas Heyer
         email                : thomas.heyer@uni-muenster.de
  ***************************************************************************/
@@ -25,12 +25,13 @@
  /**************************************************************************/
 """
 
-from PyQt5.QtWidgets import QApplication, QGraphicsScene
-from PyQt5 import QtCore
+from qgis.PyQt.QtWidgets import QApplication, QGraphicsScene
+from qgis.PyQt import QtCore
+
 
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
 from qgis.PyQt.QtGui import QIcon, QColor
-from qgis.PyQt.QtWidgets import QAction, QFileDialog, QMenu
+from qgis.PyQt.QtWidgets import QAction, QFileDialog, QMenu, QToolBar, QToolButton
 
 from qgis.gui import QgsMapTool, QgsRubberBand
 from qgis.PyQt.QtCore import Qt, pyqtSignal, QVariant
@@ -169,6 +170,30 @@ class opencratertool:
        # noinspection PyTypeChecker,PyArgumentList,PyCallByClass
         return QCoreApplication.translate('opencratertool', message)
 
+    def _add_menu_entry(self, menu, icon_path, text, callback):
+        """Add a QAction to *menu* and connect *callback* (Qt6-safe)."""
+        act = QAction(QIcon(icon_path), text, menu)
+        act.triggered.connect(callback)
+        menu.addAction(act)
+        return act
+
+    def _configure_toolbar_menu_button(self, action, menu):
+        """Ensure split toolbar control: main click = action, arrow = *menu* (Qt6 / QGIS 4)."""
+        w = None
+        try:
+            tb = self.iface.pluginToolBar()
+            if tb is not None:
+                w = tb.widgetForAction(action)
+        except Exception:
+            pass
+        if w is None:
+            for bar in self.iface.mainWindow().findChildren(QToolBar):
+                w = bar.widgetForAction(action)
+                if w is not None:
+                    break
+        if isinstance(w, QToolButton):
+            w.setMenu(menu)
+            w.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
 
     def add_action(
         self,
@@ -197,12 +222,15 @@ class opencratertool:
         if whats_this is not None:
             action.setWhatsThis(whats_this)
 
-        if menu is not None:
-            action.setMenu(menu)
+        # Do not attach menu directly to QAction, otherwise QGIS can show a
+        # nested submenu entry ("OpenCraterTool") in the dropdown. We attach
+        # menu only to the toolbar QToolButton in _configure_toolbar_menu_button.
 
         if add_to_toolbar:
             # Adds plugin icon to Plugins toolbar
             self.iface.addToolBarIcon(action)
+            if menu is not None:
+                self._configure_toolbar_menu_button(action, menu)
 
         if add_to_menu:
             self.iface.addPluginToVectorMenu(
@@ -217,7 +245,7 @@ class opencratertool:
     def initGui(self):
 
         # Set version of the tool
-        self.version='Version: 0.4 (2026-02-19)'
+        self.version='Version: 0.5 (2026-04-08)'
 
         # Create icon for two point tool
         icon_path = ':/plugins/opencratertool/ui/iconA.png'
@@ -245,42 +273,35 @@ class opencratertool:
             callback=self.main4,
             parent=self.iface.mainWindow())
             
-        # Create icon for shapefile tool
-        pointMenu = QMenu()
-        pointMenu.addAction(
-            QIcon(':/plugins/opencratertool/ui/icon1.png'),
+        mw = self.iface.mainWindow()
+        pointMenu = QMenu(mw)
+        self._add_menu_entry(
+            pointMenu, ':/plugins/opencratertool/ui/icon1.png',
             self.tr('Create Shapefiles'), self.opt1)
-        # Create icon for crater export tool
-        pointMenu.addAction(
-            QIcon(':/plugins/opencratertool/ui/icon2.png'),
+        self._add_menu_entry(
+            pointMenu, ':/plugins/opencratertool/ui/icon2.png',
             self.tr('Export Craters'), self.opt2)
-        pointMenu.addSeparator()    
-        # Create icon for preview plot tool
-        pointMenu.addAction(
-            QIcon(':/plugins/opencratertool/ui/icon3.png'),
+        pointMenu.addSeparator()
+        self._add_menu_entry(
+            pointMenu, ':/plugins/opencratertool/ui/icon3.png',
             self.tr('Preview Plot'), self.opt3)
-        # Create icon for grid tool
-        pointMenu.addAction(
-            QIcon(':/plugins/opencratertool/ui/icon4.png'),
+        self._add_menu_entry(
+            pointMenu, ':/plugins/opencratertool/ui/icon4.png',
             self.tr('Create Grid'), self.opt4)
-        # Create icon for map scale tool
-        pointMenu.addAction(
-            QIcon(':/plugins/opencratertool/ui/icon5.png'),
+        self._add_menu_entry(
+            pointMenu, ':/plugins/opencratertool/ui/icon5.png',
             self.tr('Set Map Scale'), self.opt5)
         pointMenu.addSeparator()
-        # Create icon for crater import tool
-        pointMenu.addAction(
-            QIcon(':/plugins/opencratertool/ui/icon6.png'),
+        self._add_menu_entry(
+            pointMenu, ':/plugins/opencratertool/ui/icon6.png',
             self.tr('Import Craters'), self.opt6)
-        # Create icon for area import tool
-        pointMenu.addAction(
-            QIcon(':/plugins/opencratertool/ui/icon7.png'),
+        self._add_menu_entry(
+            pointMenu, ':/plugins/opencratertool/ui/icon7.png',
             self.tr('Import Areas'), self.opt7)
         pointMenu.addSeparator()
-        # Create icon for crater compare tool
-        pointMenu.addAction(
-            QIcon(':/plugins/opencratertool/ui/icon8.png'),
-            self.tr('Compare Counts'), self.opt8)   
+        self._add_menu_entry(
+            pointMenu, ':/plugins/opencratertool/ui/icon8.png',
+            self.tr('Compare Counts'), self.opt8)
         
         # Create icon for tool description
         icon_path = ':/plugins/opencratertool/ui/icon0.png'
@@ -365,11 +386,17 @@ class opencratertool:
         self.con8.push_expo.clicked.connect(self.exportcompare)
         self.con8.progressBar.hide()
 
-        QApplication.setAttribute(QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+        if hasattr(QApplication, "setHighDpiScaleFactorRoundingPolicy"):
+            QApplication.setHighDpiScaleFactorRoundingPolicy(
+                QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+            )
         
         #  Add shortcut to set the map scale
-        shortcut = QShortcut(QKeySequence(Qt.ShiftModifier + Qt.Key_S), self.iface.mainWindow())
-        shortcut.setContext(Qt.ApplicationShortcut)
+        shortcut = QShortcut(
+            QKeySequence(Qt.KeyboardModifier.ShiftModifier | Qt.Key.Key_S),
+            self.iface.mainWindow()
+        )
+        shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
         shortcut.activated.connect(self.setscale)
 
 
@@ -391,7 +418,7 @@ class opencratertool:
         self.errorR=[]
         
         # Grid style
-        self.nb = QgsRubberBand(self.canvas, QgsWkbTypes.PolygonGeometry)
+        self.nb = QgsRubberBand(self.canvas, QgsWkbTypes.GeometryType.PolygonGeometry)
         self.nb.setColor(QColor(0, 197, 255))
         self.nb.setFillColor(QColor(0,0,0,0))
         self.nb.setWidth(1)
@@ -534,32 +561,52 @@ class opencratertool:
         # Function for
         def clickpair(self,e,p):
             try:
-                self.removeItem(self.selectionplot)
-            except:
-                pass
-            k=p[0].index()
+                if not p:
+                    return
+                try:
+                    self.removeItem(self.selectionplot)
+                except Exception:
+                    pass
 
-            selection=[self.os.rid[k]]
-            layer_crat = QgsProject.instance().mapLayersByName(self.os.crat_layer_list[self.os.refe_layer_index])[0]
-            self.os.iface.mainWindow().findChild(QAction, 'mActionDeselectAll').trigger()
-            layer_crat.selectByIds(selection)
-            if self.os.comparemodeindex==0:
-                self.selectionplot = pg.PlotDataItem([self.os.diams[k]],[self.os.error[k]], pen=None, symbol='o', symbolSize = 8, symbolBrush =(51,153,255))
-                self.os.con8.info5.setText('Difference: {:.2f} m'.format(self.os.error[k]))
-            elif self.os.comparemodeindex==1:
-                self.selectionplot = pg.PlotDataItem([self.os.diams[k]],[self.os.errorP[k]], pen=None, symbol='o', symbolSize = 8, symbolBrush =(51,153,255))
-                self.os.con8.info5.setText('Difference: {:.2f} %'.format(self.os.errorP[k]))
-            else:
-                self.selectionplot = pg.PlotDataItem([self.os.diams[k]],[self.os.errorR[k]], pen=None, symbol='o', symbolSize = 8, symbolBrush =(51,153,255))
-                self.os.con8.info5.setText('Ratio: {:.2f}'.format(self.os.errorR[k]))
-            self.addItem(self.selectionplot)
+                k = int(p[0].index())
+                selection = [int(self.os.rid[k])]
+                crat_layers = QgsProject.instance().mapLayersByName(
+                    self.os.crat_layer_list[self.os.refe_layer_index]
+                )
+                if not crat_layers:
+                    return
+                layer_crat = crat_layers[0]
+                deselect_action = self.os.iface.mainWindow().findChild(QAction, 'mActionDeselectAll')
+                if deselect_action is not None:
+                    deselect_action.trigger()
+                layer_crat.selectByIds(selection)
+                if self.os.comparemodeindex==0:
+                    self.selectionplot = pg.PlotDataItem([self.os.diams[k]],[self.os.error[k]], pen=None, symbol='o', symbolSize = 8, symbolBrush =(51,153,255))
+                    self.os.con8.info5.setText('Difference: {:.2f} m'.format(self.os.error[k]))
+                elif self.os.comparemodeindex==1:
+                    self.selectionplot = pg.PlotDataItem([self.os.diams[k]],[self.os.errorP[k]], pen=None, symbol='o', symbolSize = 8, symbolBrush =(51,153,255))
+                    self.os.con8.info5.setText('Difference: {:.2f} %'.format(self.os.errorP[k]))
+                else:
+                    self.selectionplot = pg.PlotDataItem([self.os.diams[k]],[self.os.errorR[k]], pen=None, symbol='o', symbolSize = 8, symbolBrush =(51,153,255))
+                    self.os.con8.info5.setText('Ratio: {:.2f}'.format(self.os.errorR[k]))
+                self.addItem(self.selectionplot)
 
-            box = layer_crat.boundingBoxOfSelected()
-            self.os.iface.mapCanvas().setExtent(box)
-            self.os.iface.mapCanvas().refresh()
+                box = layer_crat.boundingBoxOfSelected()
+                self.os.iface.mapCanvas().setExtent(box)
+                self.os.iface.mapCanvas().refresh()
+            except Exception:
+                import traceback
+                self.os.iface.messageBar().pushMessage(
+                    self.os.tr('OpenCraterTool'),
+                    self.os.tr('clickpair failed - see Python console'),
+                    level=Qgis.Warning,
+                    duration=4,
+                )
+                print(traceback.format_exc())
 
         # Function for
         def clickitem(self,e,p):
+           
             try:
                 self.removeItem(self.selectionplot)
             except:
@@ -601,7 +648,7 @@ class opencratertool:
             QgsMapTool.__init__(self, iface.mapCanvas())
             self.canvas = iface.mapCanvas() 
             self.iface = iface
-            self.rb = QgsRubberBand(self.canvas, QgsWkbTypes.PolygonGeometry)
+            self.rb = QgsRubberBand(self.canvas, QgsWkbTypes.GeometryType.PolygonGeometry)
             self.rb.setColor(QColor(0, 197, 255))
             
             self.rb.setFillColor(QColor(0,0,0,0))
@@ -667,7 +714,7 @@ class opencratertool:
                     polygonB=polygon.difference(self.iface.datelineN)
 
                     polygonB.transform(AqedNorthToSource)
-                    self.rb.reset(QgsWkbTypes.PolygonGeometry)
+                    self.rb.reset(QgsWkbTypes.GeometryType.PolygonGeometry)
                     self.rb.addGeometry(polygonB)
                     
                 else:
@@ -680,7 +727,7 @@ class opencratertool:
                     polygonB=polygon.difference(self.iface.datelineS)
                 
                     polygonB.transform(AqedSouthToSource)
-                    self.rb.reset(QgsWkbTypes.PolygonGeometry)
+                    self.rb.reset(QgsWkbTypes.GeometryType.PolygonGeometry)
                     self.rb.addGeometry(polygonB)
             except:
                 pass
@@ -699,7 +746,7 @@ class opencratertool:
 
         def canvasReleaseEvent(self, e):
             if(self.iface.activeLayer().name().upper().startswith('CRATER') or self.iface.activeLayer().name().upper().endswith('CRATER')):
-                if e.button() == Qt.LeftButton:
+                if e.button() == Qt.MouseButton.LeftButton:
                     if self.firstClick==False:
                         self.firstClick=True
                         self.craterDone=False
@@ -728,12 +775,12 @@ class opencratertool:
                             layer.startEditing()
                             
                             self.craterDone=True
-                            self.rb.reset(QgsWkbTypes.PolygonGeometry)
+                            self.rb.reset(QgsWkbTypes.GeometryType.PolygonGeometry)
 
                         except:
                             self.iface.messageBar().pushMessage("Wrong Shapefile", duration=3)         
                 else:
-                    self.rb.reset(QgsWkbTypes.PolygonGeometry)
+                    self.rb.reset(QgsWkbTypes.GeometryType.PolygonGeometry)
                     self.firstClick=False
                     if self.craterDone:
                         layer = self.iface.activeLayer()
@@ -757,7 +804,7 @@ class opencratertool:
             QgsMapTool.__init__(self, iface.mapCanvas())
             self.canvas = iface.mapCanvas() 
             self.iface = iface
-            self.rb = QgsRubberBand(self.canvas, QgsWkbTypes.PolygonGeometry)
+            self.rb = QgsRubberBand(self.canvas, QgsWkbTypes.GeometryType.PolygonGeometry)
             self.rb.setColor(QColor(0, 197, 255))
             self.rb.setFillColor(QColor(0,0,0,0))
             self.rb.setWidth(1)
@@ -848,7 +895,7 @@ class opencratertool:
                     polygonB=polygon.difference(self.iface.datelineN)
 
                     polygonB.transform(AqedNorthToSource)
-                    self.rb.reset(QgsWkbTypes.PolygonGeometry)
+                    self.rb.reset(QgsWkbTypes.GeometryType.PolygonGeometry)
                     self.rb.addGeometry(polygonB)
                     
                 else:
@@ -861,7 +908,7 @@ class opencratertool:
                     polygonB=polygon.difference(self.iface.datelineS)
 
                     polygonB.transform(AqedSouthToSource)
-                    self.rb.reset(QgsWkbTypes.PolygonGeometry)
+                    self.rb.reset(QgsWkbTypes.GeometryType.PolygonGeometry)
                     self.rb.addGeometry(polygonB)
             except Exception as e:
                 raise e
@@ -877,13 +924,13 @@ class opencratertool:
             else:
                 if self.firstClick==True:
                     polygon = QgsGeometry.fromPolylineXY([self.point1, self.toMapCoordinates(e.pos())])
-                    self.rb.reset(QgsWkbTypes.PolygonGeometry)
+                    self.rb.reset(QgsWkbTypes.GeometryType.PolygonGeometry)
                     self.rb.addGeometry(polygon)
 
         def canvasReleaseEvent(self, e):
             
             if(self.iface.activeLayer().name().upper().startswith('CRATER') or self.iface.activeLayer().name().upper().endswith('CRATER')):
-                if e.button() == Qt.LeftButton:
+                if e.button() == Qt.MouseButton.LeftButton:
                     if self.firstClick == False:
                        self.firstClick=True
                        # Do first click action
@@ -916,11 +963,11 @@ class opencratertool:
                                 layer.startEditing()
                                 
                                 self.craterDone=True
-                                self.rb.reset(QgsWkbTypes.PolygonGeometry)
+                                self.rb.reset(QgsWkbTypes.GeometryType.PolygonGeometry)
                             except Exception as e:
                                 self.iface.messageBar().pushMessage(f"Error {e}. Possibly Wrong Shapefile", duration=3)  
                 else:
-                    self.rb.reset(QgsWkbTypes.PolygonGeometry)
+                    self.rb.reset(QgsWkbTypes.GeometryType.PolygonGeometry)
                     self.firstClick=False
                     self.secondClick=False
                     if self.craterDone:
@@ -1105,7 +1152,7 @@ class opencratertool:
             layerFields.append(QgsField('x_coord', QVariant.Double))
             layerFields.append(QgsField('y_coord', QVariant.Double))
             layerFields.append(QgsField('tag', QVariant.String))
-            writer = QgsVectorFileWriter.create(self.exportfile,layerFields,QgsWkbTypes.Polygon,crs,transform_context,save_options)
+            writer = QgsVectorFileWriter.create(self.exportfile,layerFields,QgsWkbTypes.Type.Polygon,crs,transform_context,save_options)
             del(writer)
             layer = self.iface.addVectorLayer(self.exportfile, '', 'ogr')
             layer.startEditing()
@@ -1122,7 +1169,7 @@ class opencratertool:
             layerFields.append(QgsField('x_coord', QVariant.Double))
             layerFields.append(QgsField('y_coord', QVariant.Double))
             layerFields.append(QgsField('tag', QVariant.String))
-            writer = QgsVectorFileWriter.create(self.exportfile,layerFields,QgsWkbTypes.Point,crs,transform_context,save_options)
+            writer = QgsVectorFileWriter.create(self.exportfile,layerFields,QgsWkbTypes.Type.Point,crs,transform_context,save_options)
             del(writer)
             layer = self.iface.addVectorLayer(self.exportfile, '', 'ogr')
             layer.startEditing()
@@ -1236,7 +1283,7 @@ class opencratertool:
                 layerFields.append(QgsField('x_coord', QVariant.Double))
                 layerFields.append(QgsField('y_coord', QVariant.Double))
                 layerFields.append(QgsField('tag', QVariant.String))
-                writer = QgsVectorFileWriter.create(craterfile,layerFields,QgsWkbTypes.Polygon,crs,transform_context,save_options)
+                writer = QgsVectorFileWriter.create(craterfile,layerFields,QgsWkbTypes.Type.Polygon,crs,transform_context,save_options)
                 del(writer)
                 layer = self.iface.addVectorLayer(craterfile, '', 'ogr')
                 layer.startEditing()
@@ -1249,7 +1296,7 @@ class opencratertool:
                 layerFields = QgsFields()
                 layerFields.append(QgsField('area', QVariant.Double))
                 layerFields.append(QgsField('area_name', QVariant.String))
-                writer = QgsVectorFileWriter.create(areafile,layerFields,QgsWkbTypes.Polygon,crs,transform_context,save_options)
+                writer = QgsVectorFileWriter.create(areafile,layerFields,QgsWkbTypes.Type.Polygon,crs,transform_context,save_options)
                 del(writer)
                 layer = self.iface.addVectorLayer(areafile, '', 'ogr')
                 layer.startEditing()
@@ -1909,7 +1956,7 @@ class opencratertool:
             quadnumber=hm*wm
             if quadnumber <5000:
         
-                self.nb.reset(QgsWkbTypes.PolygonGeometry)
+                self.nb.reset(QgsWkbTypes.GeometryType.PolygonGeometry)
                 for i in range(int(hm)):
                     for k in range(int(wm)):
 
@@ -1967,13 +2014,13 @@ class opencratertool:
                     save_options=QgsVectorFileWriter.SaveVectorOptions()
                     save_options.driverName="ESRI Shapefile"
                     save_options.fileEncoding="UTF-8"  
-                    writer = QgsVectorFileWriter.create(self.exportfile, layerFields,QgsWkbTypes.Polygon,crs,transform_context,save_options)
+                    writer = QgsVectorFileWriter.create(self.exportfile, layerFields,QgsWkbTypes.Type.Polygon,crs,transform_context,save_options)
                     layer = self.iface.addVectorLayer(self.exportfile, '', 'ogr')
                     del(writer)
 
                     layer.startEditing()
 
-                    self.nb.reset(QgsWkbTypes.PolygonGeometry)
+                    self.nb.reset(QgsWkbTypes.GeometryType.PolygonGeometry)
                     areacounter=0
                     for feat in layer_area.selectedFeatures():
                         quadcounter=0
@@ -2006,7 +2053,7 @@ class opencratertool:
                     self.layerstyle()
                     layer.setRenderer(self.gridrenderer)
                     layer.triggerRepaint()
-                    self.nb.reset(QgsWkbTypes.PolygonGeometry) 
+                    self.nb.reset(QgsWkbTypes.GeometryType.PolygonGeometry) 
             else:
                 self.iface.messageBar().pushMessage("Too many grid cells", duration=3)
 
@@ -2014,7 +2061,7 @@ class opencratertool:
     def layerstyle(self):
         cratercategories = []
         val='standard'
-        symbol = QgsSymbol.defaultSymbol(QgsWkbTypes.PolygonGeometry)
+        symbol = QgsSymbol.defaultSymbol(QgsWkbTypes.GeometryType.PolygonGeometry)
         layer_style = {}
         layer_style['color'] = '0,170,226'
         layer_style['width'] = '0.5'
@@ -2024,7 +2071,7 @@ class opencratertool:
         cratercategories.append(category)
         
         val='marked'
-        symbol = QgsSymbol.defaultSymbol(QgsWkbTypes.PolygonGeometry)
+        symbol = QgsSymbol.defaultSymbol(QgsWkbTypes.GeometryType.PolygonGeometry)
         layer_style = {}
         layer_style['color'] = '220,20,60'
         layer_style['width'] = '0.5'
@@ -2034,7 +2081,7 @@ class opencratertool:
         cratercategories.append(category)
         self.craterrenderer = QgsCategorizedSymbolRenderer('tag',cratercategories)
         # area
-        symbol = QgsSymbol.defaultSymbol(QgsWkbTypes.PolygonGeometry)
+        symbol = QgsSymbol.defaultSymbol(QgsWkbTypes.GeometryType.PolygonGeometry)
         layer_style = {}
         layer_style['color'] = '240,240,240'
         layer_style['width'] = '0.5'
@@ -2042,7 +2089,7 @@ class opencratertool:
         symbol.changeSymbolLayer(0, symbol_layer)
         self.arearenderer =QgsSingleSymbolRenderer(symbol)
         # grid
-        symbol = QgsSymbol.defaultSymbol(QgsWkbTypes.PolygonGeometry)
+        symbol = QgsSymbol.defaultSymbol(QgsWkbTypes.GeometryType.PolygonGeometry)
         layer_style = {}
         layer_style['color'] = '240,240,240'
         layer_style['width'] = '0.5'
@@ -2129,7 +2176,7 @@ class opencratertool:
     def opt2(self):
         self.listlayers()  
         self.con2.show()
-        r = self.con2.exec_()
+        r = self.con2.exec()
         if r != 1:
             self.iface.mainWindow().findChild(QAction, 'mActionDeselectAll').trigger()
  
@@ -2138,7 +2185,7 @@ class opencratertool:
         self.scene.clear()
         self.resetinfos()
         self.con3.show()
-        r = self.con3.exec_()
+        r = self.con3.exec()
         if r != 1:
             self.iface.mainWindow().findChild(QAction, 'mActionDeselectAll').trigger()
   
@@ -2146,9 +2193,9 @@ class opencratertool:
         self.listlayers()
         self.con4.show()
         
-        r = self.con4.exec_()
+        r = self.con4.exec()
         if r != 1:
-            self.nb.reset(QgsWkbTypes.PolygonGeometry)
+            self.nb.reset(QgsWkbTypes.GeometryType.PolygonGeometry)
 
     def opt5(self):
         self.con5.show()

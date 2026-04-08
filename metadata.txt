@@ -1,8 +1,9 @@
 [general]
 name=OpenCraterTool
 qgisMinimumVersion=3.24
+qgisMaximumVersion=4.99
 description=A tool to measure and compare craters
-version=0.4 
+version=0.5 
 author=Thomas Heyer
 email=thomas.heyer@uni-muenster.de
 
@@ -26,6 +27,8 @@ hasProcessingProvider=no
 #		* Updated .scc file format for more consistent handling of sub area names and values.
 #		0.4 (2026-02-19)
 #		* Revised deprecated procedures for shapefile generation and projection handling.
+#       0.5 (2026-04-08)
+#       * Updated tool for QGIS 4.0 compatibility
 
 
 # Tags are comma separated with spaces allowed
