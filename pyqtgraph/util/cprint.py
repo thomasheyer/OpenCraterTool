@@ -1,12 +1,18 @@
 """
 Cross-platform color text printing
-
-Based on colorama (see pyqtgraph/util/colorama/README.txt)
 """
 import sys
 
-from .colorama.win32 import windll
-from .colorama.winterm import WinColor, WinStyle, WinTerm
+try:
+    from colorama.win32 import windll
+    from colorama.winterm import WinColor, WinStyle, WinTerm
+except ImportError:
+    # colorama is optional in embedded environments (e.g. QGIS plugin runtime)
+    windll = None
+    WinColor = None
+    WinStyle = None
+    WinTerm = None
+
 
 _WIN = sys.platform.startswith('win')
 if windll is not None:
@@ -14,7 +20,13 @@ if windll is not None:
 else:
     _WIN = False
 
-def winset(reset=False, fore=None, back=None, style=None, stderr=False):
+def winset(
+    reset: bool = False,
+    fore: object | None = None,
+    back: object | None = None,
+    style: object | None = None,
+    stderr: bool = False
+):
     if reset:
         winterm.reset_all()
     if fore is not None:
@@ -26,17 +38,20 @@ def winset(reset=False, fore=None, back=None, style=None, stderr=False):
 
 ANSI = {}
 WIN = {}
-for i,color in enumerate(['BLACK', 'RED', 'GREEN', 'YELLOW', 'BLUE', 'MAGENTA', 'CYAN', 'WHITE']):
+for i, color in enumerate(
+    ['BLACK', 'RED', 'GREEN', 'YELLOW', 'BLUE', 'MAGENTA', 'CYAN', 'WHITE']
+):
     globals()[color] = i
-    globals()['BR_' + color] = i + 8
-    globals()['BACK_' + color] = i + 40
+    globals()[f'BR_{color}'] = i + 8
+    globals()[f'BACK_{color}'] = i + 40
     ANSI[i] = "\033[%dm" % (30+i)
     ANSI[i+8] = "\033[2;%dm" % (30+i)
     ANSI[i+40] = "\033[%dm" % (40+i)
     color = 'GREY' if color == 'WHITE' else color
-    WIN[i] = {'fore': getattr(WinColor, color), 'style': WinStyle.NORMAL}
-    WIN[i+8] = {'fore': getattr(WinColor, color), 'style': WinStyle.BRIGHT}
-    WIN[i+40] = {'back': getattr(WinColor, color)}
+    if WinColor is not None and WinStyle is not None:
+        WIN[i] = {'fore': getattr(WinColor, color), 'style': WinStyle.NORMAL}
+        WIN[i+8] = {'fore': getattr(WinColor, color), 'style': WinStyle.BRIGHT}
+        WIN[i+40] = {'back': getattr(WinColor, color)}
 
 RESET = -1
 ANSI[RESET] = "\033[0m"
@@ -69,21 +84,14 @@ def cprint(stream, *args, **kwds):
         err = kwds.get('stderr', False)
 
     if hasattr(stream, 'isatty') and stream.isatty():
-        if _WIN:
-            # convert to win32 calls
-            for arg in args:
-                if isinstance(arg, str):
-                    stream.write(arg)
-                else:
-                    kwds = WIN[arg]
-                    winset(stderr=err, **kwds)
-        else:
-            # convert to ANSI
-            for arg in args:
-                if isinstance(arg, str):
-                    stream.write(arg)
-                else:
-                    stream.write(ANSI[arg])
+        for arg in args:
+            if isinstance(arg, str):
+                stream.write(arg)
+            elif _WIN:
+                kwds = WIN[arg]
+                winset(stderr=err, **kwds)
+            else:
+                stream.write(ANSI[arg])
     else:
         # ignore colors
         for arg in args:

@@ -6,12 +6,25 @@ import traceback
 import warnings
 import weakref
 import builtins
-import pickle
 
 import numpy as np
 
 # color printing for debugging
 from ..util import cprint
+
+
+def _disabled_pickle_loads(_data):
+    raise RuntimeError(
+        "pyqtgraph multiprocess pickle IPC is disabled in the opencratertool "
+        "QGIS plugin build for security reasons"
+    )
+
+
+def _disabled_pickle_dumps(_data):
+    raise RuntimeError(
+        "pyqtgraph multiprocess pickle IPC is disabled in the opencratertool "
+        "QGIS plugin build for security reasons"
+    )
 
 
 class ClosedError(Exception):
@@ -215,7 +228,7 @@ class RemoteEventHandler(object):
                 reqId = None  ## prevents attempt to return information from this request
                               ## (this is already a return from a previous request)
             
-            opts = pickle.loads(optStr)
+            opts = _disabled_pickle_loads(optStr)
             self.debugMsg("    handleRequest: id=%s opts=%s", reqId, opts)
             #print os.getpid(), "received request:", cmd, reqId, opts
             returnType = opts.get('returnType', 'auto')
@@ -431,14 +444,16 @@ class RemoteEventHandler(object):
             if opts is None:
                 opts = {}
             
-            assert callSync in ['off', 'sync', 'async'], 'callSync must be one of "off", "sync", or "async" (got %r)' % callSync
+            if callSync not in ['off', 'sync', 'async']:
+                raise ValueError('callSync must be one of "off", "sync", or "async" (got %r)' % callSync)
             if reqId is None:
                 if callSync != 'off': ## requested return value; use the next available request ID
                     reqId = self.nextRequestId
                     self.nextRequestId += 1
             else:
                 ## If requestId is provided, this _must_ be a response to a previously received request.
-                assert request in ['result', 'error']
+                if request not in ['result', 'error']:
+                    raise ValueError("request must be 'result' or 'error' when reqId is provided")
             
             if returnType is not None:
                 opts['returnType'] = returnType
@@ -447,7 +462,7 @@ class RemoteEventHandler(object):
             
             ## double-pickle args to ensure that at least status and request ID get through
             try:
-                optStr = pickle.dumps(opts)
+                optStr = _disabled_pickle_dumps(opts)
             except:
                 print("====  Error pickling this object:  ====")
                 print(opts)

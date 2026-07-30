@@ -99,10 +99,10 @@ class MeshData(object):
         return self._edges
         
     def setFaces(self, faces):
-        """Set the (Nf, 3) array of faces. Each rown in the array contains
+        """Set the (Nf, 3) array of faces. Each row in the array contains
         three indexes into the vertex array, specifying the three corners 
         of a triangular face."""
-        self._faces = faces
+        self._faces = np.ascontiguousarray(faces, dtype=np.uint32)
         self._edges = None
         self._vertexFaces = None
         self._vertexesIndexedByFaces = None
@@ -224,7 +224,15 @@ class MeshData(object):
             return self._vertexNormals[self.faces()]
         else:
             raise Exception("Invalid indexing mode. Accepts: None, 'faces'")
-        
+
+    @staticmethod
+    def _ensure_colors_dtype(colors):
+        if isinstance(colors, np.ndarray) and colors.dtype == np.uint8:
+            dtype = np.uint8
+        else:
+            dtype = np.float32
+        return np.ascontiguousarray(colors, dtype=dtype)
+
     def vertexColors(self, indexed=None):
         """
         Return an array (Nv, 4) of vertex colors.
@@ -246,12 +254,13 @@ class MeshData(object):
         If indexed=='faces', then the array will be interpreted
         as indexed and should have shape (Nf, 3, 4)
         """
+        colors = self._ensure_colors_dtype(colors)
         if indexed is None:
-            self._vertexColors = np.ascontiguousarray(colors, dtype=np.float32)
+            self._vertexColors = colors
             self._vertexColorsIndexedByFaces = None
         elif indexed == 'faces':
             self._vertexColors = None
-            self._vertexColorsIndexedByFaces = np.ascontiguousarray(colors, dtype=np.float32)
+            self._vertexColorsIndexedByFaces = colors
         else:
             raise Exception("Invalid indexing mode. Accepts: None, 'faces'")
         
@@ -279,12 +288,13 @@ class MeshData(object):
         If indexed=='faces', then the array will be interpreted
         as indexed and should have shape (Nf, 3, 4)
         """
+        colors = self._ensure_colors_dtype(colors)
         if indexed is None:
-            self._faceColors = np.ascontiguousarray(colors, dtype=np.float32)
+            self._faceColors = colors
             self._faceColorsIndexedByFaces = None
         elif indexed == 'faces':
             self._faceColors = None
-            self._faceColorsIndexedByFaces = np.ascontiguousarray(colors, dtype=np.float32)
+            self._faceColorsIndexedByFaces = colors
         else:
             raise Exception("Invalid indexing mode. Accepts: None, 'faces'")
         
@@ -312,7 +322,7 @@ class MeshData(object):
         ## I think generally this should be discouraged..
         faces = self._vertexesIndexedByFaces
         verts = {}  ## used to remember the index of each vertex position
-        self._faces = np.empty(faces.shape[:2], dtype=np.uint)
+        self._faces = np.empty(faces.shape[:2], dtype=np.uint32)
         self._vertexes = []
         self._vertexFaces = []
         self._faceNormals = None
@@ -335,7 +345,7 @@ class MeshData(object):
     
     #def _setUnindexedFaces(self, faces, vertexes, vertexColors=None, faceColors=None):
         #self._vertexes = vertexes #[QtGui.QVector3D(*v) for v in vertexes]
-        #self._faces = faces.astype(np.uint)
+        #self._faces = faces.astype(np.uint32)
         #self._edges = None
         #self._vertexFaces = None
         #self._faceNormals = None
@@ -372,7 +382,7 @@ class MeshData(object):
         if not self.hasFaceIndexedData():
             ## generate self._edges from self._faces
             nf = len(self._faces)
-            edges = np.empty(nf*3, dtype=[('i', np.uint, 2)])
+            edges = np.empty(nf*3, dtype=[('i', np.uint32, 2)])
             edges['i'][0:nf] = self._faces[:,:2]
             edges['i'][nf:2*nf] = self._faces[:,1:3]
             edges['i'][-nf:,0] = self._faces[:,2]
@@ -387,7 +397,7 @@ class MeshData(object):
             #print self._edges
         elif self._vertexesIndexedByFaces is not None:
             verts = self._vertexesIndexedByFaces
-            edges = np.empty((verts.shape[0], 3, 2), dtype=np.uint)
+            edges = np.empty((verts.shape[0], 3, 2), dtype=np.uint32)
             nf = verts.shape[0]
             edges[:,0,0] = np.arange(nf) * 3
             edges[:,0,1] = edges[:,0,0] + 1
@@ -401,8 +411,8 @@ class MeshData(object):
         
         
     def save(self):
-        """Serialize this mesh to a string appropriate for disk storage"""
-        import pickle
+        """Serialize this mesh to a JSON-compatible string for disk storage"""
+        import json
         if self._faces is not None:
             names = ['_vertexes', '_faces']
         else:
@@ -418,16 +428,25 @@ class MeshData(object):
         elif self._faceColorsIndexedByFaces is not None:
             names.append('_faceColorsIndexedByFaces')
             
-        state = dict([(n,getattr(self, n)) for n in names])
-        return pickle.dumps(state)
+        state = {}
+        for n in names:
+            val = getattr(self, n)
+            if isinstance(val, np.ndarray):
+                state[n] = val.tolist()
+            else:
+                state[n] = val
+        return json.dumps(state)
         
     def restore(self, state):
         """Restore the state of a mesh previously saved using save()"""
-        import pickle
-        state = pickle.loads(state)
+        import json
+        if isinstance(state, (bytes, bytearray)):
+            state = state.decode('utf-8')
+        if isinstance(state, str):
+            state = json.loads(state)
         for k in state:
             if isinstance(state[k], list):
-                if isinstance(state[k][0], QtGui.QVector3D):
+                if state[k] and isinstance(state[k][0], QtGui.QVector3D):
                     state[k] = [[v.x(), v.y(), v.z()] for v in state[k]]
                 state[k] = np.array(state[k])
             setattr(self, k, state[k])
@@ -440,7 +459,7 @@ class MeshData(object):
         Return a MeshData instance with vertexes and faces computed
         for a spherical surface.
         """
-        verts = np.empty((rows+1, cols, 3), dtype=float)
+        verts = np.empty((rows+1, cols, 3), dtype=np.float32)
         
         ## compute vertexes
         phi = (np.arange(rows+1) * np.pi / rows).reshape(rows+1, 1)
@@ -454,7 +473,7 @@ class MeshData(object):
         verts = verts.reshape((rows+1)*cols, 3)[cols-1:-(cols-1)]  ## remove redundant vertexes from top and bottom
         
         ## compute faces
-        faces = np.empty((rows*cols*2, 3), dtype=np.uint)
+        faces = np.empty((rows*cols*2, 3), dtype=np.uint32)
         rowtemplate1 = ((np.arange(cols).reshape(cols, 1) + np.array([[0, 1, 0]])) % cols) + np.array([[0, 0, cols]])
         rowtemplate2 = ((np.arange(cols).reshape(cols, 1) + np.array([[0, 1, 1]])) % cols) + np.array([[cols, 0, cols]])
         for row in range(rows):
@@ -479,7 +498,7 @@ class MeshData(object):
         for a cylindrical surface.
         The cylinder may be tapered with different radii at each end (truncated cone)
         """
-        verts = np.empty((rows+1, cols, 3), dtype=float)
+        verts = np.empty((rows+1, cols, 3), dtype=np.float32)
         if isinstance(radius, int):
             radius = [radius, radius] # convert to list
         ## compute vertexes
@@ -492,7 +511,7 @@ class MeshData(object):
         verts[...,1] = r * np.sin(th) # y = r sin(th)
         verts = verts.reshape((rows+1)*cols, 3) # just reshape: no redundant vertices...
         ## compute faces
-        faces = np.empty((rows*cols*2, 3), dtype=np.uint)
+        faces = np.empty((rows*cols*2, 3), dtype=np.uint32)
         rowtemplate1 = ((np.arange(cols).reshape(cols, 1) + np.array([[0, 1, 0]])) % cols) + np.array([[0, 0, cols]])
         rowtemplate2 = ((np.arange(cols).reshape(cols, 1) + np.array([[0, 1, 1]])) % cols) + np.array([[cols, 0, cols]])
         for row in range(rows):

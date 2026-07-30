@@ -82,7 +82,7 @@ class ScatterPlotWidget(QtWidgets.QSplitter):
         Set the list of field names/units to be processed.
         
         The format of *fields* is the same as used by 
-        :func:`ColorMapWidget.setFields <pyqtgraph.widgets.ColorMapWidget.ColorMapParameter.setFields>`
+        :meth:`~pyqtgraph.widgets.ColorMapWidget.ColorMapParameter.setFields`
         """
         self.fields = OrderedDict(fields)
         self.mouseOverField = mouseOverField
@@ -251,7 +251,8 @@ class ScatterPlotWidget(QtWidgets.QSplitter):
         if self.scatterPlot is not None:
             try:
                 self.scatterPlot.sigPointsClicked.disconnect(self.plotClicked)
-            except:
+            except (TypeError, RuntimeError):
+                # Already disconnected or plot object deleted.
                 pass
         
         self._visibleXY = xy

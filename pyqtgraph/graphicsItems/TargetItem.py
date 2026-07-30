@@ -1,12 +1,11 @@
 import string
-import warnings
 from math import atan2
 
 from .. import functions as fn
 from ..Point import Point
 from ..Qt import QtCore, QtGui
 from .GraphicsObject import GraphicsObject
-from .ScatterPlotItem import Symbols, makeCrosshair
+from .ScatterPlotItem import Symbols
 from .TextItem import TextItem
 from .UIGraphicsItem import UIGraphicsItem
 from .ViewBox import ViewBox
@@ -27,7 +26,6 @@ class TargetItem(UIGraphicsItem):
         self,
         pos=None,
         size=10,
-        radii=None,
         symbol="crosshair",
         pen=None,
         hoverPen=None,
@@ -44,8 +42,6 @@ class TargetItem(UIGraphicsItem):
             Initial position of the symbol.  Default is (0, 0)
         size : int
             Size of the symbol in pixels.  Default is 10.
-        radii : tuple of int
-            Deprecated.  Gives size of crosshair in screen pixels.
         pen : QPen, tuple, list or str
             Pen to use when drawing line. Can be any arguments that are valid
             for :func:`~pyqtgraph.mkPen`. Default pen is transparent yellow.
@@ -84,16 +80,6 @@ class TargetItem(UIGraphicsItem):
         self._label = None
         self.mouseHovering = False
 
-        if radii is not None:
-            warnings.warn(
-                "'radii' is now deprecated, and will be removed in 0.13.0. Use 'size' "
-                "parameter instead",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            symbol = makeCrosshair(*radii)
-            size = 1
-
         if pen is None:
             pen = (255, 255, 0)
         self.setPen(pen)
@@ -120,43 +106,57 @@ class TargetItem(UIGraphicsItem):
             pos = Point(0, 0)
         self.setPos(pos)
 
+        self._path = None
+        self.setSymbol(symbol)
+
+        self.scale = size
+        self.setLabel(label, labelOpts)
+
+    def setSymbol(self, symbol):
+        """Method to set the TargetItem symbol, during or after creation
+
+        Parameters
+        ----------
+        symbol : QPainterPath or str
+            QPainterPath to use for drawing the target, should be centered at
+            ``(0, 0)`` with ``max(width, height) == 1.0``.  Alternatively a string
+            which can be any symbol accepted by
+            :func:`~pyqtgraph.ScatterPlotItem.setSymbol`
+
+        Raises
+        ------
+        KeyError
+            If ``symbol`` string is unknown
+
+        TypeError
+            If unknown type is is provided as ``symbol``
+
+        """
         if isinstance(symbol, str):
             try:
-                self._path = Symbols[symbol]
+                path = Symbols[symbol]
             except KeyError:
-                raise KeyError("symbol name found in available Symbols")
+                raise KeyError(f"Symbol name '{symbol}' not found in available Symbols")
         elif isinstance(symbol, QtGui.QPainterPath):
-            self._path = symbol
+            path = symbol
         else:
             raise TypeError("Unknown type provided as symbol")
 
-        self.scale = size
-        self.setPath(self._path)
-        self.setLabel(label, labelOpts)
-
-    @property
-    def sigDragged(self):
-        warnings.warn(
-            "'sigDragged' has been deprecated and will be removed in 0.13.0.  Use "
-            "`sigPositionChangeFinished` instead",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.sigPositionChangeFinished
+        self.setPath(path)
 
     def setPos(self, *args):
         """Method to set the position to ``(x, y)`` within the plot view
 
         Parameters
         ----------
-        args : tuple, list, QPointF, QPoint, pg.Point, or two floats
+        args : tuple or list or QtCore.QPointF or QtCore.QPoint or Point or float
             Two float values or a container that specifies ``(x, y)`` position where the
             TargetItem should be placed
 
         Raises
         ------
         TypeError
-            If args cannot be used to instantiate a pg.Point
+            If args cannot be used to instantiate a Point
         """
         try:
             newPos = Point(*args)
@@ -232,7 +232,7 @@ class TargetItem(UIGraphicsItem):
         return self._shape
 
     def generateShape(self):
-        dt = self.deviceTransform()
+        dt = self.deviceTransform_()
         if dt is None:
             self._shape = self._path
             return None
@@ -327,7 +327,7 @@ class TargetItem(UIGraphicsItem):
             displayed
             If a non-formatted string, then the text label will display ``text``, by
             default None
-        labelOpts : dictionary, optional
+        labelOpts : dict, optional
             These arguments are passed on to :class:`~pyqtgraph.TextItem`
         """
         if not text:
@@ -345,17 +345,6 @@ class TargetItem(UIGraphicsItem):
             if self._label is not None:
                 self._label.scene().removeItem(self._label)
             self._label = TargetLabel(self, text=text, **labelOpts)
-
-    def setLabelAngle(self, angle):
-        warnings.warn(
-            "TargetItem.setLabelAngle is deprecated and will be removed in 0.13.0."
-            "Use TargetItem.label().setAngle() instead",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        if self.label() is not None and angle != self.label().angle:
-            self.label().setAngle(angle)
-        return None
 
 
 class TargetLabel(TextItem):
@@ -377,10 +366,11 @@ class TargetLabel(TextItem):
     offset : tuple or list or QPointF or QPoint
         Position to set the anchor of the TargetLabel away from the center of
         the target in pixels, by default it is (20, 0).
-    anchor : tuple, list, QPointF or QPoint
+    anchor : tuple or list or QPointF or QPoint
         Position to rotate the TargetLabel about, and position to set the
         offset value to see :class:`~pyqtgraph.TextItem` for more information.
-    kwargs : dict of arguments that are passed on to
+    kwargs : dict 
+        kwargs contains arguments that are passed onto
         :class:`~pyqtgraph.TextItem` constructor, excluding text parameter
     """
 

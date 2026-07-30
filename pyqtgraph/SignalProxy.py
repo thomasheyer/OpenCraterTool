@@ -1,39 +1,42 @@
 import weakref
 from time import perf_counter
 
-from . import ThreadsafeTimer
 from .functions import SignalBlock
 from .Qt import QtCore
+from .ThreadsafeTimer import ThreadsafeTimer
 
 __all__ = ['SignalProxy']
 
 
 class SignalProxy(QtCore.QObject):
     """Object which collects rapid-fire signals and condenses them
-    into a single signal or a rate-limited stream of signals. 
-    Used, for example, to prevent a SpinBox from generating multiple 
+    into a single signal or a rate-limited stream of signals.
+    Used, for example, to prevent a SpinBox from generating multiple
     signals when the mouse wheel is rolled over it.
-    
+
     Emits sigDelayed after input signals have stopped for a certain period of
     time.
     """
 
     sigDelayed = QtCore.Signal(object)
 
-    def __init__(self, signal, delay=0.3, rateLimit=0, slot=None):
+    def __init__(self, signal, delay=0.3, rateLimit=0, slot=None, *, threadSafe=True):
         """Initialization arguments:
         signal - a bound Signal or pyqtSignal instance
         delay - Time (in seconds) to wait for signals to stop before emitting (default 0.3s)
         slot - Optional function to connect sigDelayed to.
-        rateLimit - (signals/sec) if greater than 0, this allows signals to stream out at a 
+        rateLimit - (signals/sec) if greater than 0, this allows signals to stream out at a
                     steady rate while they are being received.
+        threadSafe - Specify if thread-safety is required. For backwards compatibility, it
+                     defaults to True.
         """
 
         QtCore.QObject.__init__(self)
         self.delay = delay
         self.rateLimit = rateLimit
         self.args = None
-        self.timer = ThreadsafeTimer.ThreadsafeTimer()
+        Timer = ThreadsafeTimer if threadSafe else QtCore.QTimer
+        self.timer = Timer()
         self.timer.timeout.connect(self.flush)
         self.lastFlushTime = None
         self.signal = signal
@@ -49,6 +52,9 @@ class SignalProxy(QtCore.QObject):
     def setDelay(self, delay):
         self.delay = delay
 
+    @QtCore.Slot()
+    @QtCore.Slot(object)
+    @QtCore.Slot(object, object)
     def signalReceived(self, *args):
         """Received signal. Cancel previous timer and store args to be
         forwarded later."""
@@ -69,6 +75,7 @@ class SignalProxy(QtCore.QObject):
             self.timer.stop()
             self.timer.start(int(min(leakTime, self.delay) * 1000) + 1)
 
+    @QtCore.Slot()
     def flush(self):
         """If there is a signal queued up, send it now."""
         if self.args is None or self.blockSignal:
@@ -83,20 +90,23 @@ class SignalProxy(QtCore.QObject):
         self.blockSignal = True
         try:
             self.signal.disconnect(self.signalReceived)
-        except:
+        except (TypeError, RuntimeError):
+            # Already disconnected or underlying QObject deleted.
             pass
         try:
-            # XXX: This is a weakref, however segfaulting on PySide and
-            # Python 2. We come back later
-            self.sigDelayed.disconnect(self.slot)
-        except:
+            slot = self.slot()
+            if slot is not None:
+                self.sigDelayed.disconnect(slot)
+        except (TypeError, RuntimeError):
+            # Already disconnected or underlying QObject deleted.
             pass
         finally:
             self.slot = None
 
     def connectSlot(self, slot):
         """Connect the `SignalProxy` to an external slot"""
-        assert self.slot is None, "Slot was already connected!"
+        if self.slot is not None:
+            raise RuntimeError("Slot was already connected!")
         self.slot = weakref.ref(slot)
         self.sigDelayed.connect(slot)
         self.blockSignal = False

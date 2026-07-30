@@ -10,7 +10,7 @@ from .common import CtrlNode
 
 
 class ColumnSelectNode(Node):
-    """Select named columns from a record array or MetaArray."""
+    """Select named columns from a record array."""
     nodeName = "ColumnSelect"
     def __init__(self, name):
         Node.__init__(self, name, terminals={'In': {'io': 'in'}})
@@ -24,31 +24,20 @@ class ColumnSelectNode(Node):
             self.updateList(In)
                 
         out = {}
-        if hasattr(In, 'implements') and In.implements('MetaArray'):
-            for c in self.columns:
-                out[c] = In[self.axis:c]
-        elif isinstance(In, np.ndarray) and In.dtype.fields is not None:
+        if isinstance(In, np.ndarray) and In.dtype.fields is not None:
             for c in self.columns:
                 out[c] = In[c]
         else:
             self.In.setValueAcceptable(False)
-            raise Exception("Input must be MetaArray or ndarray with named fields")
-            
+            raise Exception("Input must be ndarray with named fields")
+
         return out
         
     def ctrlWidget(self):
         return self.columnList
 
     def updateList(self, data):
-        if hasattr(data, 'implements') and data.implements('MetaArray'):
-            cols = data.listColumns()
-            for ax in cols:  ## find first axis with columns
-                if len(cols[ax]) > 0:
-                    self.axis = ax
-                    cols = set(cols[ax])
-                    break
-        else:
-            cols = list(data.dtype.fields.keys())
+        cols = list(data.dtype.fields.keys())
                 
         rem = set()
         for c in self.columns:
@@ -154,8 +143,6 @@ class RegionSelectNode(CtrlNode):
         if self['selected'].isConnected():
             if data is None:
                 sliced = None
-            elif (hasattr(data, 'implements') and data.implements('MetaArray')):
-                sliced = data[0:s['start']:s['stop']]
             else:
                 mask = (data['time'] >= s['start']) * (data['time'] < s['stop'])
                 sliced = data[mask]
@@ -230,23 +217,11 @@ class EvalNode(Node):
         return self.text.toPlainText()
         
     def process(self, display=True, **args):
-        l = locals()
-        l.update(args)
-        ## try eval first, then exec
-        try:  
-            text = self.text.toPlainText().replace('\n', ' ')
-            output = eval(text, globals(), l)
-        except SyntaxError:
-            fn = "def fn(**args):\n"
-            run = "\noutput=fn(**args)\n"
-            text = fn + "\n".join(["    "+l for l in self.text.toPlainText().split('\n')]) + run
-            ldict = locals()
-            exec(text, globals(), ldict)
-            output = ldict['output']
-        except:
-            print(f"Error processing node: {self.name()}")
-            raise
-        return output
+        # Eval/exec of arbitrary node text is disabled in this QGIS plugin build.
+        raise RuntimeError(
+            "flowchart Eval/Exec nodes are disabled in the opencratertool "
+            "QGIS plugin build for security reasons"
+        )
         
     def saveState(self):
         state = Node.saveState(self)
@@ -444,10 +419,10 @@ class Slice(CtrlNode):
     """
     nodeName = 'Slice'
     uiTemplate = [
-        ('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1e6}),
-        ('start', 'intSpin', {'value': 0, 'min': -1e6, 'max': 1e6}),
-        ('stop', 'intSpin', {'value': -1, 'min': -1e6, 'max': 1e6}),
-        ('step', 'intSpin', {'value': 1, 'min': -1e6, 'max': 1e6}),
+        ('axis', 'intSpin', {'value': 0, 'min': 0, 'max': 1000000}),
+        ('start', 'intSpin', {'value': 0, 'min': -1000000, 'max': 1000000}),
+        ('stop', 'intSpin', {'value': -1, 'min': -1000000, 'max': 1000000}),
+        ('step', 'intSpin', {'value': 1, 'min': -1000000, 'max': 1000000}),
     ]
     
     def processData(self, data):

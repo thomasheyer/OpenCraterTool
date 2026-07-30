@@ -1,5 +1,5 @@
 from .. import functions as fn
-from ..Qt import QtWidgets
+from ..Qt import QtCore, QtWidgets
 from .GraphicsWidget import GraphicsWidget
 from .LabelItem import LabelItem
 from .PlotItem import PlotItem
@@ -11,7 +11,7 @@ __all__ = ['GraphicsLayout']
 class GraphicsLayout(GraphicsWidget):
     """
     Used for laying out GraphicsWidgets in a grid.
-    This is usually created automatically as part of a :class:`GraphicsWindow <pyqtgraph.GraphicsWindow>` or :class:`GraphicsLayoutWidget <pyqtgraph.GraphicsLayoutWidget>`.
+    This is usually created automatically as part of a :class:`GraphicsLayoutWidget <pyqtgraph.GraphicsLayoutWidget>`.
     """
 
     def __init__(self, parent=None, border=None):
@@ -149,28 +149,56 @@ class GraphicsLayout(GraphicsWidget):
         return self.rect()
 
     def itemIndex(self, item):
+        """Return the numerical index of GraphicsItem object passed in
+
+        Parameters
+        ----------
+        item : QGraphicsLayoutItem
+            Item to query the index position of
+
+        Returns
+        -------
+        int
+            Index of the item within the graphics layout
+
+        Raises
+        ------
+        ValueError
+            Raised if item could not be found inside the GraphicsLayout instance.
+        """
         for i in range(self.layout.count()):
             if self.layout.itemAt(i).graphicsItem() is item:
                 return i
-        raise Exception("Could not determine index of item " + str(item))
+        raise ValueError(f"Could not determine index of item {item}")
     
     def removeItem(self, item):
         """Remove *item* from the layout."""
         ind = self.itemIndex(item)
+        
+        # Remove the item from the layout and scene
         self.layout.removeAt(ind)
         self.scene().removeItem(item)
         
+        # Clear the row and column where the item was
         for r, c in self.items[item]:
             del self.rows[r][c]
+        
+        # Clean up the references to the removed item
         del self.items[item]
-
         item.geometryChanged.disconnect(self._updateItemBorder)
+        
+        # Remove the item's border
         itemBorder = self.itemBorders.pop(item)
         self.scene().removeItem(itemBorder)
-
+        
+        # Recalculate the layout to reclaim the space
+        self.layout.updateGeometry()
         self.update()
+
     
     def clear(self):
+        """Remove all items from the layout and set the current row and column to 0
+        """
         for i in list(self.items.keys()):
             self.removeItem(i)
         self.currentRow = 0
@@ -185,6 +213,7 @@ class GraphicsLayout(GraphicsWidget):
     def setSpacing(self, *args):
         self.layout.setSpacing(*args)
 
+    @QtCore.Slot()
     def _updateItemBorder(self):
         if self.border is None:
             return

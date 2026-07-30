@@ -126,36 +126,46 @@ class DiffTreeWidget(QtWidgets.QWidget):
         """
         Compare data structure *a* to structure *b*. 
         """
+        info, expect = a, b
         # Check test structures are the same
-        assert type(info) is type(expect)
+        if type(info) is not type(expect):
+            raise AssertionError(f"type mismatch: {type(info)} != {type(expect)}")
         if hasattr(info, '__len__'):
-            assert len(info) == len(expect)
+            if len(info) != len(expect):
+                raise AssertionError(f"length mismatch: {len(info)} != {len(expect)}")
             
         if isinstance(info, dict):
             for k in info:
-                assert k in expect
+                if k not in expect:
+                    raise AssertionError(f"unexpected key: {k}")
             for k in expect:
-                assert k in info
+                if k not in info:
+                    raise AssertionError(f"missing key: {k}")
                 self.compare_results(info[k], expect[k])
         elif isinstance(info, list):
             for i in range(len(info)):
                 self.compare_results(info[i], expect[i])
         elif isinstance(info, np.ndarray):
-            assert info.shape == expect.shape
-            assert info.dtype == expect.dtype
+            if info.shape != expect.shape:
+                raise AssertionError(f"shape mismatch: {info.shape} != {expect.shape}")
+            if info.dtype != expect.dtype:
+                raise AssertionError(f"dtype mismatch: {info.dtype} != {expect.dtype}")
             if info.dtype.fields is None:
                 intnan = -9223372036854775808  # happens when np.nan is cast to int
                 inans = np.isnan(info) | (info == intnan)
                 enans = np.isnan(expect) | (expect == intnan)
-                assert np.all(inans == enans)
+                if not np.all(inans == enans):
+                    raise AssertionError("NaN mask mismatch")
                 mask = ~inans
-                assert np.allclose(info[mask], expect[mask])
+                if not np.allclose(info[mask], expect[mask]):
+                    raise AssertionError("array values differ")
             else:
                 for k in info.dtype.fields.keys():
                     self.compare_results(info[k], expect[k])
         else:
             try:
-                assert info == expect
+                if info != expect:
+                    raise AssertionError(f"values differ: {info!r} != {expect!r}")
             except Exception:
                 raise NotImplementedError("Cannot compare objects of type %s" % type(info))
     

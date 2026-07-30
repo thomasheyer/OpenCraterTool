@@ -1,6 +1,5 @@
 import itertools
 import math
-import warnings
 import weakref
 from collections import OrderedDict
 
@@ -10,14 +9,14 @@ from .. import Qt, debug
 from .. import functions as fn
 from .. import getConfigOption
 from ..Point import Point
-from ..Qt import QT_LIB, QtCore, QtGui
+from ..Qt import QtCore, QtGui
 from .GraphicsObject import GraphicsObject
 
 __all__ = ['ScatterPlotItem', 'SpotItem']
 
 
 ## Build all symbol paths
-name_list = ['o', 's', 't', 't1', 't2', 't3', 'd', '+', 'x', 'p', 'h', 'star',
+name_list = ['o', 's', 't', 't1', 't2', 't3', 'd', '+', 'x', 'p', 'h', 'star', '|', '_',
              'arrow_up', 'arrow_right', 'arrow_down', 'arrow_left', 'crosshair']
 Symbols = OrderedDict([(name, QtGui.QPainterPath()) for name in name_list])
 Symbols['o'].addEllipse(QtCore.QRectF(-0.5, -0.5, 1, 1))
@@ -53,6 +52,7 @@ coords = {
              (-0.1816, 0.059), (-0.2939, 0.4045), (0, 0.1910),
              (0.2939, 0.4045), (0.1816, 0.059), (0.4755, -0.1545),
              (0.1123, -0.1545)],
+    '|': [(-0.1, 0.5),(0.1, 0.5), (0.1, -0.5), (-0.1, -0.5)],
     'arrow_up': [
         (-0.125, 0.125), (0, 0), (0.125, 0.125),
         (0.05, 0.125), (0.05, 0.5), (-0.05, 0.5), (-0.05, 0.125)
@@ -70,6 +70,9 @@ tr.rotate(45)
 Symbols['arrow_right'] = tr.map(Symbols['arrow_up'])
 Symbols['arrow_down'] = tr.map(Symbols['arrow_right'])
 Symbols['arrow_left'] = tr.map(Symbols['arrow_down'])
+
+# already rotated 90 degrees from earlier commands
+Symbols['_'] = tr.map(Symbols['|'])
 _DEFAULT_STYLE = {'symbol': None, 'size': -1, 'pen': None, 'brush': None, 'visible': True}
 
 
@@ -86,7 +89,7 @@ def drawSymbol(painter, symbol, size, pen, brush):
     painter.drawPath(symbol)
 
 
-def renderSymbol(symbol, size, pen, brush, device=None):
+def renderSymbol(symbol, size, pen, brush, device=None, dpr=1.0):
     """
     Render a symbol specification to QImage.
     Symbol may be either a QPainterPath or one of the keys in the Symbols dict.
@@ -97,26 +100,18 @@ def renderSymbol(symbol, size, pen, brush, device=None):
     ## Render a spot with the given parameters to a pixmap
     penPxWidth = max(math.ceil(pen.widthF()), 1)
     if device is None:
-        device = QtGui.QImage(int(size+penPxWidth), int(size+penPxWidth),
-            QtGui.QImage.Format.Format_ARGB32_Premultiplied)
+        side = int(math.ceil(dpr*(size+penPxWidth)))
+        device = QtGui.QImage(side, side, QtGui.QImage.Format.Format_ARGB32_Premultiplied)
+        device.setDevicePixelRatio(dpr)
         device.fill(QtCore.Qt.GlobalColor.transparent)
     p = QtGui.QPainter(device)
     try:
         p.setRenderHint(p.RenderHint.Antialiasing)
-        p.translate(device.width()*0.5, device.height()*0.5)
+        p.translate(device.width()/dpr*0.5, device.height()/dpr*0.5)
         drawSymbol(p, symbol, size, pen, brush)
     finally:
         p.end()
     return device
-
-def makeSymbolPixmap(size, pen, brush, symbol):
-    warnings.warn(
-        "This is an internal function that is no longer being used. "
-        "Will be removed in 0.13",
-        DeprecationWarning, stacklevel=2
-    )
-    img = renderSymbol(symbol, size, pen, brush)
-    return QtGui.QPixmap(img)
 
 
 def _mkPen(*args, **kwargs):
@@ -143,57 +138,6 @@ def _mkBrush(*args, **kwargs):
         return fn.mkBrush(*args, **kwargs)
 
 
-class PixmapFragments:
-    def __init__(self):
-        self.use_sip_array = (
-            Qt.QT_LIB.startswith('PyQt') and
-            hasattr(Qt.sip, 'array') and
-            (
-                (0x60301 <= QtCore.PYQT_VERSION) or
-                (0x50f07 <= QtCore.PYQT_VERSION < 0x60000)
-            )
-        )
-        self.alloc(0)
-
-    def alloc(self, size):
-        # The C++ native API is:
-        #   drawPixmapFragments(const PixmapFragment *fragments, int fragmentCount,
-        #                       const QPixmap &pixmap)
-        #
-        # PySide exposes this API whereas PyQt wraps it to be more Pythonic.
-        # In PyQt, a Python list of PixmapFragment instances needs to be provided.
-        # This is inefficient because:
-        # 1) constructing the Python list involves calling sip.wrapinstance multiple times.
-        #    - this is mitigated here by reusing the instance pointers
-        # 2) PyQt will anyway deconstruct the Python list and repack the PixmapFragment
-        #    instances into a contiguous array, in order to call the underlying C++ native API.
-        if self.use_sip_array:
-            self.objs = Qt.sip.array(QtGui.QPainter.PixmapFragment, size)
-            vp = Qt.sip.voidptr(self.objs, len(self.objs)*10*8)
-            self.arr = np.frombuffer(vp, dtype=np.float64).reshape((-1, 10))
-        else:
-            self.arr = np.empty((size, 10), dtype=np.float64)
-            if QT_LIB.startswith('PyQt'):
-                self.objs = list(map(Qt.sip.wrapinstance,
-                    itertools.count(self.arr.ctypes.data, self.arr.strides[0]),
-                    itertools.repeat(QtGui.QPainter.PixmapFragment, self.arr.shape[0])))
-            else:
-                self.objs = Qt.shiboken.wrapInstance(self.arr.ctypes.data, QtGui.QPainter.PixmapFragment)
-
-    def array(self, size):
-        if size != self.arr.shape[0]:
-            self.alloc(size)
-        return self.arr
-
-    def draw(self, painter, pixmap):
-        if not len(self.arr):
-            return
-        if QT_LIB.startswith('PyQt'):
-            painter.drawPixmapFragments(self.objs, pixmap)
-        else:
-            painter.drawPixmapFragments(self.objs, len(self.arr), pixmap)
-
-
 class SymbolAtlas(object):
     """
     Used to efficiently construct a single QPixmap containing all rendered symbols
@@ -209,14 +153,8 @@ class SymbolAtlas(object):
     _idGenerator = itertools.count()
 
     def __init__(self):
-        self._data = np.zeros((0, 0, 4), dtype=np.ubyte)  # numpy array of atlas image
-        self._coords = {}
-        self._pixmap = None
-        self._maxWidth = 0
-        self._totalWidth = 0
-        self._totalArea = 0
-        self._pos = (0, 0)
-        self._rowShape = (0, 0)
+        self._dpr = 1.0
+        self.clear()
 
     def __getitem__(self, styles):
         """
@@ -234,6 +172,12 @@ class SymbolAtlas(object):
     def __len__(self):
         return len(self._coords)
 
+    def devicePixelRatio(self):
+        return self._dpr
+
+    def setDevicePixelRatio(self, dpr):
+        self._dpr = dpr
+
     @property
     def pixmap(self):
         if self._pixmap is None:
@@ -242,7 +186,8 @@ class SymbolAtlas(object):
 
     @property
     def maxWidth(self):
-        return self._maxWidth
+        # return the max logical width
+        return self._maxWidth / self._dpr
 
     def rebuild(self, styles=None):
         profiler = debug.Profiler()  # noqa: profiler prints on GC
@@ -257,7 +202,14 @@ class SymbolAtlas(object):
             self._extendFromData(data)
 
     def clear(self):
-        self.__init__()
+        self._data = np.zeros((0, 0, 4), dtype=np.ubyte)  # numpy array of atlas image
+        self._coords = {}
+        self._pixmap = None
+        self._maxWidth = 0
+        self._totalWidth = 0
+        self._totalArea = 0
+        self._pos = (0, 0)
+        self._rowShape = (0, 0)
 
     def diagnostics(self):
         n = len(self)
@@ -294,7 +246,7 @@ class SymbolAtlas(object):
         images = []
         data = []
         for key, style in styles.items():
-            img = renderSymbol(*style)
+            img = renderSymbol(*style, dpr=self._dpr)
             arr = fn.ndarray_from_qimage(img)
             images.append(img)  # keep these to delay garbage collection
             data.append((key, arr))
@@ -375,7 +327,7 @@ class SymbolAtlas(object):
         else:
             img = fn.ndarray_to_qimage(self._data,
                 QtGui.QImage.Format.Format_ARGB32_Premultiplied)
-            pm = QtGui.QPixmap(img)
+            pm = QtGui.QPixmap.fromImage(img)
         return pm
 
 
@@ -413,6 +365,8 @@ class ScatterPlotItem(GraphicsObject):
 
         self.picture = None   # QPicture used for rendering when pxmode==False
         self.fragmentAtlas = SymbolAtlas()
+        if screen := QtGui.QGuiApplication.primaryScreen():
+            self.fragmentAtlas.setDevicePixelRatio(screen.devicePixelRatio())
 
         dtype = [
             ('x', float),
@@ -437,7 +391,7 @@ class ScatterPlotItem(GraphicsObject):
         self.bounds = [None, None]  ## caches data bounds
         self._maxSpotWidth = 0      ## maximum size of the scale-variant portion of all spots
         self._maxSpotPxWidth = 0    ## maximum size of the scale-invariant portion of all spots
-        self._pixmapFragments = PixmapFragments()
+        self._pixmapFragments = Qt.internals.PrimitiveArray(QtGui.QPainter.PixmapFragment, 10)
         self.opts = {
             'pxMode': True,
             'useCache': True,  ## If useCache is False, symbols are re-drawn on every paint.
@@ -512,12 +466,6 @@ class ScatterPlotItem(GraphicsObject):
                                generating LegendItem entries and by some exporters.
         ====================== ===============================================================================================
         """
-        if 'identical' in kargs:
-            warnings.warn(
-                "The *identical* functionality is handled automatically now. "
-                "Will be removed in 0.13.",
-                DeprecationWarning, stacklevel=2
-            )
         oldData = self.data  ## this causes cached pixmaps to be preserved while new data is registered.
         self.clear()  ## clear out all old data
         self.addPoints(*args, **kargs)
@@ -651,14 +599,6 @@ class ScatterPlotItem(GraphicsObject):
     def getData(self):
         return self.data['x'], self.data['y']
 
-    def setPoints(self, *args, **kargs):
-        warnings.warn(
-            "ScatterPlotItem.setPoints is deprecated, use ScatterPlotItem.setData "
-            "instead.  Will be removed in 0.13",
-            DeprecationWarning, stacklevel=2
-        )
-        return self.setData(*args, **kargs)
-
     def implements(self, interface=None):
         ints = ['plotData']
         if interface is None:
@@ -731,6 +671,8 @@ class ScatterPlotItem(GraphicsObject):
         * 'p'  pentagon
         * 'h'  hexagon
         * 'star'
+        * '|' vertical line
+        * '_' horizontal line
         * 'x'  cross
         * 'arrow_up'
         * 'arrow_right'
@@ -909,58 +851,6 @@ class ScatterPlotItem(GraphicsObject):
                 else:
                     yield size + pen.widthF(), 0
 
-    def getSpotOpts(self, recs, scale=1.0):
-        warnings.warn(
-            "This is an internal method that is no longer being used.  Will be "
-            "removed in 0.13",
-            DeprecationWarning, stacklevel=2
-        )
-        if recs.ndim == 0:
-            rec = recs
-            symbol = rec['symbol']
-            if symbol is None:
-                symbol = self.opts['symbol']
-            size = rec['size']
-            if size < 0:
-                size = self.opts['size']
-            pen = rec['pen']
-            if pen is None:
-                pen = self.opts['pen']
-            brush = rec['brush']
-            if brush is None:
-                brush = self.opts['brush']
-            return (symbol, size*scale, fn.mkPen(pen), fn.mkBrush(brush))
-        else:
-            recs = recs.copy()
-            recs['symbol'][np.equal(recs['symbol'], None)] = self.opts['symbol']
-            recs['size'][np.equal(recs['size'], -1)] = self.opts['size']
-            recs['size'] *= scale
-            recs['pen'][np.equal(recs['pen'], None)] = fn.mkPen(self.opts['pen'])
-            recs['brush'][np.equal(recs['brush'], None)] = fn.mkBrush(self.opts['brush'])
-            return recs
-
-    def measureSpotSizes(self, dataSet):
-        warnings.warn(
-            "This is an internal method that is no longer being used. "
-            "Will be removed in 0.13.",
-            DeprecationWarning, stacklevel=2
-        )
-        for size, pen in zip(*self._style(['size', 'pen'], data=dataSet)):
-            ## keep track of the maximum spot size and pixel size
-            width = 0
-            pxWidth = 0
-            if self.opts['pxMode']:
-                pxWidth = size + pen.widthF()
-            else:
-                width = size
-                if pen.isCosmetic():
-                    pxWidth += pen.widthF()
-                else:
-                    width += pen.widthF()
-            self._maxSpotWidth = max(self._maxSpotWidth, width)
-            self._maxSpotPxWidth = max(self._maxSpotPxWidth, pxWidth)
-        self.bounds = [None, None]
-
     def clear(self):
         """Remove all spots from the scatter plot"""
         #self.clearItems()
@@ -1045,46 +935,8 @@ class ScatterPlotItem(GraphicsObject):
         GraphicsObject.setExportMode(self, *args, **kwds)
         self.invalidate()
 
-    def mapPointsToDevice(self, pts):
-        warnings.warn(
-            "This is an internal method that is no longer being used. "
-            "Will be removed in 0.13",
-            DeprecationWarning, stacklevel=2
-        )
-        # Map point locations to device
-        tr = self.deviceTransform()
-        if tr is None:
-            return None
-
-        pts = fn.transformCoordinates(tr, pts)
-        pts -= self.data['sourceRect']['w'] / 2
-        pts = np.clip(pts, -2**30, 2**30) ## prevent Qt segmentation fault.
-
-        return pts
-
-    def getViewMask(self, pts):
-        warnings.warn(
-            "This is an internal method that is no longer being used. "
-            "Will be removed in 0.13",
-            DeprecationWarning, stacklevel=2
-        )
-        # Return bool mask indicating all points that are within viewbox
-        # pts is expressed in *device coordiantes*
-        vb = self.getViewBox()
-        if vb is None:
-            return None
-        viewBounds = vb.mapRectToDevice(vb.boundingRect())
-        w = self.data['sourceRect']['w'] / 2
-        mask = ((pts[0] + w > viewBounds.left()) &
-                (pts[0] - w < viewBounds.right()) &
-                (pts[1] + w > viewBounds.top()) &
-                (pts[1] - w < viewBounds.bottom())) ## remove out of view points
-
-        mask &= self.data['visible']
-        return mask
-
     @debug.warnOnException  ## raising an exception here causes crash
-    def paint(self, p, *args):
+    def paint(self, p, option, widget):
         profiler = debug.Profiler()
         cmode = self.opts.get('compositionMode', None)
         if cmode is not None:
@@ -1112,17 +964,28 @@ class ScatterPlotItem(GraphicsObject):
             if self.opts['useCache'] and self._exportOpts is False:
                 # Draw symbols from pre-rendered atlas
 
+                dpr = self.fragmentAtlas.devicePixelRatio()
+                if widget is not None and (dpr_new := widget.devicePixelRatioF()) != dpr:
+                    # force a re-render if dpr changed
+                    dpr = dpr_new
+                    self.fragmentAtlas.setDevicePixelRatio(dpr)
+                    self.fragmentAtlas.clear()
+                    self.data['sourceRect'] = 0
+                    self.updateSpots()
+
                 # x, y is the center of the target rect
                 xy = pts[:, viewMask].T
                 sr = self.data['sourceRect'][viewMask]
 
-                frags = self._pixmapFragments.array(sr.size)
+                self._pixmapFragments.resize(sr.size)
+                frags = self._pixmapFragments.ndarray()
                 frags[:, 0:2] = xy
                 frags[:, 2:6] = np.frombuffer(sr, dtype=int).reshape((-1, 4)) # sx, sy, sw, sh
-                frags[:, 6:10] = [1.0, 1.0, 0.0, 1.0]   # scaleX, scaleY, rotation, opacity
+                frags[:, 6:10] = [1/dpr, 1/dpr, 0.0, 1.0]   # scaleX, scaleY, rotation, opacity
 
                 profiler('prep')
-                self._pixmapFragments.draw(p, self.fragmentAtlas.pixmap)
+                drawargs = self._pixmapFragments.drawargs()
+                p.drawPixmapFragments(*drawargs, self.fragmentAtlas.pixmap)
                 profiler('draw')
             else:
                 # render each symbol individually
@@ -1318,7 +1181,7 @@ class SpotItem(object):
         try:
             n = int(symbol)
             symbol = list(Symbols.keys())[n % len(Symbols)]
-        except:
+        except (TypeError, ValueError):
             pass
         return symbol
 

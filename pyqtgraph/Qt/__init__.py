@@ -5,13 +5,15 @@ This module exists to smooth out some of the differences between Qt versions.
 * Allow you to import QtCore/QtGui from pyqtgraph.Qt without specifying which Qt wrapper
   you want to use.
 """
-
+import contextlib
 import os
+import platform
 import re
 import subprocess
 import sys
 import time
 import warnings
+from importlib import resources
 
 PYSIDE = 'PySide'
 PYSIDE2 = 'PySide2'
@@ -34,7 +36,7 @@ if QT_LIB is not None:
 ## is already imported. If not, then attempt to import in the order
 ## specified in libOrder.
 if QT_LIB is None:
-    libOrder = [PYQT5, PYSIDE2, PYSIDE6, PYQT6]
+    libOrder = [PYQT6, PYSIDE6, PYQT5, PYSIDE2]
 
     for lib in libOrder:
         if lib in sys.modules:
@@ -43,15 +45,16 @@ if QT_LIB is None:
 
 if QT_LIB is None:
     for lib in libOrder:
+        qt = lib + '.QtCore'
         try:
-            __import__(lib)
+            __import__(qt)
             QT_LIB = lib
             break
         except ImportError:
             pass
 
 if QT_LIB is None:
-    raise Exception("PyQtGraph requires one of PyQt5, PyQt6, PySide2 or PySide6; none of these packages could be imported.")
+    raise ImportError("PyQtGraph requires one of PyQt5, PyQt6, PySide2 or PySide6; none of these packages could be imported.")
 
 
 class FailedImport(object):
@@ -83,57 +86,17 @@ class _StringIO(object):
     
 def _loadUiType(uiFile):
     """
-    PySide lacks a "loadUiType" command like PyQt4's, so we have to convert
-    the ui file to py code in-memory first and then execute it in a
-    special frame to retrieve the form_class.
+    Disabled in this QGIS plugin build.
 
-    from stackoverflow: http://stackoverflow.com/a/14195313/3781327
-
-    seems like this might also be a legitimate solution, but I'm not sure
-    how to make PyQt4 and pyside look the same...
-        http://stackoverflow.com/a/8717832
+    Upstream pyqtgraph implements this by parsing XML, invoking an external
+    uic tool, and exec()-ing generated Python. Those patterns are flagged by
+    security scanners and are unused by opencratertool, so the entry point is
+    refused instead of exposing that attack surface.
     """
-
-    pyside2uic = None
-    if QT_LIB == PYSIDE2:
-        try:
-            import pyside2uic
-        except ImportError:
-            # later versions of pyside2 have dropped pyside2uic; use the uic binary instead.
-            pyside2uic = None
-
-        if pyside2uic is None:
-            pyside2version = tuple(map(int, PySide2.__version__.split(".")))
-            if (5, 14) <= pyside2version < (5, 14, 2, 2):
-                warnings.warn('For UI compilation, it is recommended to upgrade to PySide >= 5.15')
-
-    # get class names from ui file
-    import xml.etree.ElementTree as xml
-    parsed = xml.parse(uiFile)
-    widget_class = parsed.find('widget').get('class')
-    form_class = parsed.find('class').text
-
-    # convert ui file to python code
-    if pyside2uic is None:
-        uic_executable = QT_LIB.lower() + '-uic'
-        uipy = subprocess.check_output([uic_executable, uiFile])
-    else:
-        o = _StringIO()
-        with open(uiFile, 'r') as f:
-            pyside2uic.compileUi(f, o, indent=0)
-        uipy = o.getvalue()
-
-    # execute python code
-    pyc = compile(uipy, '<string>', 'exec')
-    frame = {}
-    exec(pyc, frame)
-
-    # fetch the base_class and form class based on their type in the xml from designer
-    form_class = frame['Ui_%s'%form_class]
-    base_class = eval('QtWidgets.%s'%widget_class)
-
-    return form_class, base_class
-
+    raise RuntimeError(
+        "pyqtgraph.loadUiType is disabled in the opencratertool QGIS plugin "
+        "build for security reasons"
+    )
 
 # For historical reasons, pyqtgraph maintains a Qt4-ish interface back when
 # there wasn't a QtWidgets module. This _was_ done by monkey-patching all of
@@ -251,97 +214,6 @@ else:
     raise ValueError("Invalid Qt lib '%s'" % QT_LIB)
 
 
-# common to PyQt5, PyQt6, PySide2 and PySide6
-if QT_LIB in [PYQT5, PYQT6, PYSIDE2, PYSIDE6]:
-    # We're using Qt5 which has a different structure so we're going to use a shim to
-    # recreate the Qt4 structure
-
-    if QT_LIB in [PYQT5, PYSIDE2]:
-        __QGraphicsItem_scale = QtWidgets.QGraphicsItem.scale
-
-        def scale(self, *args):
-            warnings.warn(
-                "Deprecated Qt API, will be removed in 0.13.0.",
-                DeprecationWarning, stacklevel=2
-            )
-            if args:	
-                sx, sy = args	
-                tr = self.transform()	
-                tr.scale(sx, sy)	
-                self.setTransform(tr)	
-            else:	
-                return __QGraphicsItem_scale(self)
-        QtWidgets.QGraphicsItem.scale = scale	
-
-        def rotate(self, angle):
-            warnings.warn(
-                "Deprecated Qt API, will be removed in 0.13.0.",
-                DeprecationWarning, stacklevel=2
-            )
-            tr = self.transform()	
-            tr.rotate(angle)	
-            self.setTransform(tr)	
-        QtWidgets.QGraphicsItem.rotate = rotate	
-
-        def translate(self, dx, dy):
-            warnings.warn(
-                "Deprecated Qt API, will be removed in 0.13.0.",
-                DeprecationWarning, stacklevel=2
-            )
-            tr = self.transform()	
-            tr.translate(dx, dy)	
-            self.setTransform(tr)	
-        QtWidgets.QGraphicsItem.translate = translate	
-
-        def setMargin(self, i):
-            warnings.warn(
-                "Deprecated Qt API, will be removed in 0.13.0.",
-                DeprecationWarning, stacklevel=2
-            )
-            self.setContentsMargins(i, i, i, i)	
-        QtWidgets.QGridLayout.setMargin = setMargin	
-
-        def setResizeMode(self, *args):
-            warnings.warn(
-                "Deprecated Qt API, will be removed in 0.13.0.",
-                DeprecationWarning, stacklevel=2
-            )
-            self.setSectionResizeMode(*args)
-        QtWidgets.QHeaderView.setResizeMode = setResizeMode	
-    
-    # Import all QtWidgets objects into QtGui
-    _fallbacks = dir(QtWidgets)
-
-    def lazyGetattr(name):
-        if not (name in _fallbacks and name.startswith('Q')):
-            raise AttributeError(f"module 'QtGui' has no attribute '{name}'")
-        # This whitelist is attrs which are not shared between PyQt6.QtGui and PyQt5.QtGui, but which can be found on
-        # one of the QtWidgets.
-        whitelist = [
-            "QAction",
-            "QActionGroup",
-            "QFileSystemModel",
-            "QPagedPaintDevice",
-            "QPaintEvent",
-            "QShortcut",
-            "QUndoCommand",
-            "QUndoGroup",
-            "QUndoStack",
-        ]
-        if name not in whitelist:
-            warnings.warn(
-                "Accessing pyqtgraph.QtWidgets through QtGui is deprecated and will be removed sometime"
-                f" after May 2022. Use QtWidgets.{name} instead.",
-                DeprecationWarning, stacklevel=2
-            )
-        attr = getattr(QtWidgets, name)
-        setattr(QtGui, name, attr)
-        return attr
-
-    QtGui.__getattr__ = lazyGetattr
-    
-    QtWidgets.QApplication.setGraphicsSystem = None
-
 
 if QT_LIB in [PYQT6, PYSIDE6]:
     # We're using Qt6 which has a different structure so we're going to use a shim to
@@ -349,6 +221,26 @@ if QT_LIB in [PYQT6, PYSIDE6]:
 
     if not isinstance(QtOpenGLWidgets, FailedImport):
         QtWidgets.QOpenGLWidget = QtOpenGLWidgets.QOpenGLWidget
+
+    # PySide6 incorrectly placed QFileSystemModel inside QtWidgets
+    if QT_LIB == PYSIDE6 and hasattr(QtWidgets, 'QFileSystemModel'):
+        module = getattr(QtWidgets, "QFileSystemModel")
+        setattr(QtGui, "QFileSystemModel", module)
+
+else:
+    # Shim Qt5 namespace to match Qt6
+    module_whitelist = [
+        "QAction",
+        "QActionGroup",
+        "QFileSystemModel",
+        "QShortcut",
+        "QUndoCommand",
+        "QUndoGroup",
+        "QUndoStack",
+    ]
+    for module in module_whitelist:
+        attr = getattr(QtWidgets, module)
+        setattr(QtGui, module, attr)
 
 
 # Common to PySide2 and PySide6
@@ -391,6 +283,7 @@ if QT_LIB in [PYQT5, PYQT6]:
     loadUiType = uic.loadUiType
 
     QtCore.Signal = QtCore.pyqtSignal
+    QtCore.Slot = QtCore.pyqtSlot
 
     compat.wrapinstance = sip.wrapinstance
     compat.unwrapinstance = sip.unwrapinstance
@@ -398,22 +291,22 @@ if QT_LIB in [PYQT5, PYQT6]:
 
 from . import internals
 
-# USE_XXX variables are deprecated
-USE_PYSIDE = QT_LIB == PYSIDE
-USE_PYQT4 = QT_LIB == PYQT4
-USE_PYQT5 = QT_LIB == PYQT5
-
-## Make sure we have Qt >= 5.12
-versionReq = [5, 12]
+# Alert user if using Qt < 5.15, but do not raise exception
+versionReq = [5, 15]
 m = re.match(r'(\d+)\.(\d+).*', QtVersion)
 if m is not None and list(map(int, m.groups())) < versionReq:
-    print(list(map(int, m.groups())))
-    raise Exception('pyqtgraph requires Qt version >= %d.%d  (your version is %s)' % (versionReq[0], versionReq[1], QtVersion))
+    warnings.warn(
+        f"PyQtGraph supports Qt version >= {versionReq[0]}.{versionReq[1]},"
+        f" but {QtVersion} detected.",
+        RuntimeWarning,
+        stacklevel=2
+    )
 
 App = QtWidgets.QApplication
 # subclassing QApplication causes segfaults on PySide{2, 6} / Python 3.8.7+
 
 QAPP = None
+_pgAppInitialized = False
 def mkQApp(name=None):
     """
     Creates new QApplication or returns current instance if existing.
@@ -424,15 +317,13 @@ def mkQApp(name=None):
     ============== ========================================================
     """
     global QAPP
-
-    def onPaletteChange(palette):
-        color = palette.base().color()
-        app = QtWidgets.QApplication.instance()
-        darkMode = color.lightnessF() < 0.5
-        app.setProperty('darkMode', darkMode)
+    global _pgAppInitialized
 
     QAPP = QtWidgets.QApplication.instance()
     if QAPP is None:
+        # We do not have an already instantiated QApplication
+        # let's add some sane defaults
+
         # hidpi handling
         qtVersionCompare = tuple(map(int, QtVersion.split(".")))
         if qtVersionCompare > (6, 0):
@@ -440,18 +331,86 @@ def mkQApp(name=None):
             pass
         elif qtVersionCompare > (5, 14):
             os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
-            QtWidgets.QApplication.setHighDpiScaleFactorRoundingPolicy(QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+            QtWidgets.QApplication.setHighDpiScaleFactorRoundingPolicy(
+                QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+            )
         else:  # qt 5.12 and 5.13
             QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling)
             QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps)
 
         QAPP = QtWidgets.QApplication(sys.argv or ["pyqtgraph"])
-        QAPP.paletteChanged.connect(onPaletteChange)
-        QAPP.paletteChanged.emit(QAPP.palette())
+        if QtVersion.startswith("6"):
+            # issues with dark mode + windows + qt5
+            QAPP.setStyle("fusion")
+
+        # set the application icon
+        # python 3.9 won't take "pyqtgraph.icons.peegee" directly
+        traverse_path = resources.files("pyqtgraph.icons")  
+        peegee_traverse_path = traverse_path.joinpath("peegee")
+
+        # as_file requires I feed in a file from the directory...
+        with resources.as_file(
+            peegee_traverse_path.joinpath("peegee.svg")
+        ) as path:
+            # need the parent directory, not the filepath
+            icon_path = path.parent
+
+        applicationIcon = QtGui.QIcon()
+        applicationIcon.addFile(
+            os.fsdecode(icon_path / "peegee.svg"),
+        )
+        for sz in [128, 256, 512]:
+            pathname = os.fsdecode(icon_path / f"peegee_{sz}px.png")
+            applicationIcon.addFile(pathname, QtCore.QSize(sz, sz))
+
+        # handles the icon showing up on the windows taskbar
+        if platform.system() == 'Windows':
+            import ctypes
+            my_app_id = "pyqtgraph.Qt.mkQApp"
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(my_app_id)
+        QAPP.setWindowIcon(applicationIcon)
+
+    if not _pgAppInitialized:
+        _pgAppInitialized = True
+
+        # determine if dark mode
+        try:
+            # this only works in Qt 6.5+
+            darkMode = QAPP.styleHints().colorScheme() == QtCore.Qt.ColorScheme.Dark
+            QAPP.styleHints().colorSchemeChanged.connect(_onColorSchemeChange)
+        except AttributeError:
+            palette = QAPP.palette()
+            windowTextLightness = palette.color(QtGui.QPalette.ColorRole.WindowText).lightness()
+            windowLightness = palette.color(QtGui.QPalette.ColorRole.Window).lightness()
+            darkMode = windowTextLightness > windowLightness
+            QAPP.paletteChanged.connect(_onPaletteChange)
+        QAPP.setProperty("darkMode", darkMode)
 
     if name is not None:
         QAPP.setApplicationName(name)
     return QAPP
+
+
+def _onPaletteChange(palette):
+    # Attempt to keep darkMode attribute up to date
+    # QEvent.Type.PaletteChanged/ApplicationPaletteChanged will be emitted after
+    # paletteChanged.emit()!
+    # Using API deprecated in Qt 6.0
+    app = mkQApp()
+    windowTextLightness = palette.color(QtGui.QPalette.ColorRole.WindowText).lightness()
+    windowLightness = palette.color(QtGui.QPalette.ColorRole.Window).lightness()
+    darkMode = windowTextLightness > windowLightness
+    app.setProperty('darkMode', darkMode)
+
+
+def _onColorSchemeChange(colorScheme):
+    # Attempt to keep darkMode attribute up to date
+    # QEvent.Type.PaletteChanged/ApplicationPaletteChanged will be emitted before
+    # QStyleHint().colorSchemeChanged.emit()!
+    # Uses Qt 6.5+ API
+    app = mkQApp()
+    darkMode = colorScheme == QtCore.Qt.ColorScheme.Dark
+    app.setProperty('darkMode', darkMode)
 
 
 # exec() is used within _loadUiType, so we define as exec_() here and rename in pg namespace
