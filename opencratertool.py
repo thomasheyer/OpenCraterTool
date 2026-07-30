@@ -37,7 +37,7 @@ from qgis.gui import QgsMapTool, QgsRubberBand
 from qgis.PyQt.QtCore import Qt, pyqtSignal, QVariant
 
 from math import sqrt, pi, cos, sin, isclose
-from qgis.core import QgsFeature, QgsGeometry, QgsWkbTypes, QgsField, QgsFields, QgsVectorFileWriter, QgsCoordinateReferenceSystem, QgsCoordinateTransform,QgsProject, Qgis, QgsPointXY,QgsSymbol,QgsRendererCategory,QgsCategorizedSymbolRenderer,QgsSimpleLineSymbolLayer,QgsSingleSymbolRenderer, QgsFeatureRequest,QgsRectangle
+from qgis.core import QgsFeature, QgsGeometry, QgsWkbTypes, QgsField, QgsFields, QgsVectorFileWriter, QgsCoordinateReferenceSystem, QgsCoordinateTransform,QgsProject, Qgis, QgsPointXY,QgsSymbol,QgsRendererCategory,QgsCategorizedSymbolRenderer,QgsSimpleLineSymbolLayer,QgsSingleSymbolRenderer, QgsFeatureRequest,QgsRectangle, QgsMessageLog
 
 import datetime,time
 import numpy as np
@@ -184,8 +184,12 @@ class opencratertool:
             tb = self.iface.pluginToolBar()
             if tb is not None:
                 w = tb.widgetForAction(action)
-        except Exception:
-            pass
+        except (AttributeError, RuntimeError, TypeError) as err:
+            QgsMessageLog.logMessage(
+                f"Toolbar button lookup failed: {err}",
+                "opencratertool",
+                level=Qgis.Warning,
+            )
         if w is None:
             for bar in self.iface.mainWindow().findChildren(QToolBar):
                 w = bar.widgetForAction(action)
@@ -245,7 +249,7 @@ class opencratertool:
     def initGui(self):
 
         # Set version of the tool
-        self.version='Version: 0.5 (2026-04-08)'
+        self.version='Version: 0.6 (2026-07-27)'
 
         # Create icon for two point tool
         icon_path = ':/plugins/opencratertool/ui/iconA.png'
@@ -490,8 +494,9 @@ class opencratertool:
         def clickitem(self,e,p):
             try:
                 self.removeItem(self.selectionplot)
-            except:
-                pass
+            except (AttributeError, RuntimeError, TypeError):
+                # No prior selection marker to remove or item already detached.
+                self.selectionplot = None
      
             # Index of clicked item
             k=p[0].index()
@@ -565,8 +570,9 @@ class opencratertool:
                     return
                 try:
                     self.removeItem(self.selectionplot)
-                except Exception:
-                    pass
+                except (AttributeError, RuntimeError, TypeError):
+                    # No prior selection marker to remove or item already detached.
+                    self.selectionplot = None
 
                 k = int(p[0].index())
                 selection = [int(self.os.rid[k])]
@@ -609,8 +615,9 @@ class opencratertool:
            
             try:
                 self.removeItem(self.selectionplot)
-            except:
-                pass
+            except (AttributeError, RuntimeError, TypeError):
+                # No prior selection marker to remove or item already detached.
+                self.selectionplot = None
      
             k=p[0].index()
             selection=[]
@@ -729,8 +736,12 @@ class opencratertool:
                     polygonB.transform(AqedSouthToSource)
                     self.rb.reset(QgsWkbTypes.GeometryType.PolygonGeometry)
                     self.rb.addGeometry(polygonB)
-            except:
-                pass
+            except (RuntimeError, ValueError, TypeError, ZeroDivisionError) as err:
+                QgsMessageLog.logMessage(
+                    f"twoPointCircle failed: {err}",
+                    "opencratertool",
+                    level=Qgis.Warning,
+                )
 
         def canvasPressEvent(self, e):
             pass
@@ -777,8 +788,13 @@ class opencratertool:
                             self.craterDone=True
                             self.rb.reset(QgsWkbTypes.GeometryType.PolygonGeometry)
 
-                        except:
-                            self.iface.messageBar().pushMessage("Wrong Shapefile", duration=3)         
+                        except (KeyError, ValueError, RuntimeError, TypeError) as err:
+                            self.iface.messageBar().pushMessage("Wrong Shapefile", duration=3)
+                            QgsMessageLog.logMessage(
+                                f"Failed writing crater feature: {err}",
+                                "opencratertool",
+                                level=Qgis.Warning,
+                            )
                 else:
                     self.rb.reset(QgsWkbTypes.GeometryType.PolygonGeometry)
                     self.firstClick=False
@@ -1081,7 +1097,7 @@ class opencratertool:
  
         layer = QgsProject.instance().mapLayersByName(self.crat_layer_list[self.crat_layer_index])[0]
         crs=CRS.from_proj4(layer.crs().toProj())
-        ellipsoid_info='\na_axis radius = {:.1f}'.format(crs.ellipsoid.semi_major_metre/1000)+' <km>\nb_axis radius = {:.1f}'.format(crs.ellipsoid.semi_minor_metre/1000)+' <km>\nc_axis radius = {:.1f}'.format(crs.ellipsoid.semi_major_metre/1000)+' <km>'
+        ellipsoid_info='\na_axis_radius = {:.1f}'.format(crs.ellipsoid.semi_major_metre/1000)+' <km>\nb_axis_radius = {:.1f}'.format(crs.ellipsoid.semi_minor_metre/1000)+' <km>\nc_axis_radius = {:.1f}'.format(crs.ellipsoid.semi_major_metre/1000)+' <km>'
         
         save_options=QgsVectorFileWriter.SaveVectorOptions()
         save_options.driverName="ESRI Shapefile"
@@ -1099,6 +1115,7 @@ class opencratertool:
                     '# Spatial crater count',
                     '#',
                     '# Date of measurement = {}'.format(str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))),
+                    '# OpenCraterTool version = '+self.version[9:],
                     '#',
                     '# Ellipsoid axes: {}'.format(ellipsoid_info),
                     'coordinate_system_name = {}'.format(self.expo_layer_crsinfo),
@@ -1451,8 +1468,12 @@ class opencratertool:
                 self.con8.info2.setText('{:.2f} %'.format(self.overall_errorP))    
             else:
                 self.con8.info2.setText('{:.4f}'.format(self.overall_errorR))
-        except:
-            pass
+        except (AttributeError, RuntimeError, ValueError, TypeError, IndexError) as err:
+            QgsMessageLog.logMessage(
+                f"Failed to refresh comparison plot mode: {err}",
+                "opencratertool",
+                level=Qgis.Warning,
+            )
     
     # Functions to set the user-selected options -----------------------------------------------------------------------
 
@@ -2234,8 +2255,12 @@ class opencratertool:
             else:
                 self.iface.messageBar().pushMessage("Select the 'CRATER' shapefile.", duration=3)
                 self.actions[0].setChecked(False)
-        except:
-            pass
+        except (AttributeError, RuntimeError, TypeError) as err:
+            QgsMessageLog.logMessage(
+                f"main2 failed to toggle draw tool: {err}",
+                "opencratertool",
+                level=Qgis.Warning,
+            )
     
     # Function to activate the three-point crater drawing
     def main3(self):
@@ -2253,8 +2278,12 @@ class opencratertool:
             else:
                 self.iface.messageBar().pushMessage("Select the 'CRATER' shapefile.", duration=3)
                 self.actions[1].setChecked(False)
-        except:
-            pass
+        except (AttributeError, RuntimeError, TypeError) as err:
+            QgsMessageLog.logMessage(
+                f"main3 failed to toggle draw tool: {err}",
+                "opencratertool",
+                level=Qgis.Warning,
+            )
     
     # Function to start marking/unmarking craters
     def main4(self):
@@ -2264,7 +2293,7 @@ class opencratertool:
     def setscale(self):
         try:            
             self.iface.mapCanvas().zoomScale(float(self.con5.line_scale.text()))
-        except:
+        except (ValueError, TypeError):
             self.con5.show()
 
 # End
